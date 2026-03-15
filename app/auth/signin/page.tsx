@@ -4,47 +4,88 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/ui/Navbar'
-import { signInWithGoogle, getUser } from '@/lib/supabase'
+
+// Simple direct Supabase client for this page only
+const SUPABASE_URL = 'https://kcbvupdqgbevatxctlbb.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtjYnZ1cGRxZ2JldmF0eGN0bGJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NDM0MDUsImV4cCI6MjA4OTExOTQwNX0.gRFM_nFYe9URrzfJjUDGNDz0b8pybCePe6uLxcx9rFQ'
 
 export default function SignInPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [debugInfo, setDebugInfo] = useState('')
+  const [email, setEmail] = useState('')
 
+  // Check if already signed in on mount
   useEffect(() => {
-    // Debug: Check if env vars are available
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const hasKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    
-    console.log('Debug - Supabase URL:', supabaseUrl)
-    console.log('Debug - Has Anon Key:', hasKey)
-    
-    setDebugInfo(`URL: ${supabaseUrl ? 'Set' : 'Missing'} | Key: ${hasKey ? 'Set' : 'Missing'}`)
-    
-    // Check if already signed in
-    const checkUser = async () => {
-      const user = await getUser()
-      if (user) {
-        router.push('/profile')
+    const checkSession = async () => {
+      try {
+        const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`
+          }
+        })
+        if (response.ok) {
+          router.push('/profile/')
+        }
+      } catch {
+        // Not signed in, that's fine
       }
     }
-    checkUser()
+    checkSession()
   }, [router])
 
+  // Google Sign In
   const handleGoogleSignIn = async () => {
-    console.log('Sign in button clicked')
     setIsLoading(true)
     setMessage('')
     
     try {
-      console.log('Calling signInWithGoogle...')
-      const result = await signInWithGoogle()
-      console.log('Sign in result:', result)
-      // Redirect happens via OAuth callback
+      // Get current URL for redirect
+      const redirectTo = `${window.location.origin}/auth/callback/`
+      
+      // Construct Google OAuth URL
+      const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
+      
+      // Redirect to Google OAuth
+      window.location.href = authUrl
     } catch (err) {
       console.error('Sign in error:', err)
       setMessage('Failed to sign in. Please try again.')
+      setIsLoading(false)
+    }
+  }
+
+  // Email Magic Link Sign In
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email) return
+    
+    setIsLoading(true)
+    setMessage('')
+    
+    try {
+      const response = await fetch(`${SUPABASE_URL}/auth/v1/otp`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email,
+          create_user: true,
+          gotrue_meta_security: {}
+        })
+      })
+      
+      if (response.ok) {
+        setMessage(`Magic link sent to ${email}! Check your inbox.`)
+      } else {
+        setMessage('Failed to send magic link. Please try again.')
+      }
+    } catch {
+      setMessage('Failed to send magic link. Please try again.')
+    } finally {
       setIsLoading(false)
     }
   }
@@ -59,13 +100,12 @@ export default function SignInPage() {
           <p className="text-slate-400">Sign in to save your progress and compete on leaderboards</p>
         </div>
 
-        {/* Debug Info */}
-        <div className="mb-4 p-2 rounded bg-slate-800 text-xs text-slate-400 text-center">
-          Debug: {debugInfo}
-        </div>
-
         {message && (
-          <div className="mb-4 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-center">
+          <div className={`mb-4 p-4 rounded-lg text-center ${
+            message.includes('sent') 
+              ? 'bg-green-500/10 border border-green-500/30 text-green-400'
+              : 'bg-red-500/10 border border-red-500/30 text-red-400'
+          }`}>
             {message}
           </div>
         )}
@@ -87,7 +127,7 @@ export default function SignInPage() {
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
               </svg>
             )}
-            {isLoading ? 'Signing in...' : 'Continue with Google'}
+            Continue with Google
           </button>
 
           {/* Divider */}
@@ -100,8 +140,37 @@ export default function SignInPage() {
             </div>
           </div>
 
+          {/* Email Magic Link */}
+          <form onSubmit={handleEmailSignIn} className="space-y-3">
+            <input
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-colors"
+              required
+            />
+            <button 
+              type="submit"
+              className="w-full py-3 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-colors border border-white/10 disabled:opacity-50"
+              disabled={isLoading || !email}
+            >
+              {isLoading ? 'Sending...' : 'Send Magic Link'}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-[#1c1c26] text-slate-500">or</span>
+            </div>
+          </div>
+
           {/* Continue as Guest */}
-          <Link href="/game">
+          <Link href="/game/">
             <button className="w-full py-3 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 font-medium transition-colors">
               Continue as Guest
             </button>
@@ -131,17 +200,11 @@ export default function SignInPage() {
             </svg>
             Track your stats over time
           </div>
-          <div className="flex items-center gap-3 text-sm text-slate-300">
-            <svg className="w-5 h-5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Never lose your high scores
-          </div>
         </div>
 
         {/* Back to game */}
         <div className="mt-8 text-center">
-          <Link href="/game" className="text-slate-400 hover:text-white text-sm transition-colors">
+          <Link href="/game/" className="text-slate-400 hover:text-white text-sm transition-colors">
             ← Back to game
           </Link>
         </div>
