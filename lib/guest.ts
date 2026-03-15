@@ -1,4 +1,5 @@
 // Guest user management - Zero friction approach
+// Works alongside Supabase Auth
 
 const GUEST_ID_KEY = 'pathfinder_guest_id'
 const GUEST_USERNAME_KEY = 'pathfinder_guest_username'
@@ -119,26 +120,63 @@ export function saveGuestStats(stats: GuestStats): void {
   localStorage.setItem(GUEST_STATS_KEY, JSON.stringify(stats))
 }
 
+// Save a game result for guest
+export interface GuestGameResult {
+  mode: 'classic' | 'survival'
+  gridSize: number
+  score: number
+  isPerfect: boolean
+  timeSeconds: number
+  timestamp: number
+}
+
+const GUEST_GAMES_KEY = 'pathfinder_guest_games'
+
+export function saveGuestGame(result: GuestGameResult): void {
+  if (typeof window === 'undefined') return
+  
+  const games = getGuestGames()
+  games.push(result)
+  // Keep only last 50 games
+  if (games.length > 50) {
+    games.shift()
+  }
+  localStorage.setItem(GUEST_GAMES_KEY, JSON.stringify(games))
+  
+  // Update stats
+  const stats = getGuestStats()
+  stats.totalGames++
+  if (result.isPerfect) {
+    stats.perfectSolves++
+  }
+  if (result.mode === 'survival') {
+    if (result.score > stats.survivalHighScore) {
+      stats.survivalHighScore = result.score
+    }
+    if (result.gridSize > stats.survivalMaxLevel) {
+      stats.survivalMaxLevel = result.gridSize
+    }
+  }
+  saveGuestStats(stats)
+}
+
+export function getGuestGames(): GuestGameResult[] {
+  if (typeof window === 'undefined') return []
+  
+  const saved = localStorage.getItem(GUEST_GAMES_KEY)
+  return saved ? JSON.parse(saved) : []
+}
+
 // Clear guest data (when user signs in)
 export function clearGuestData(): void {
   if (typeof window === 'undefined') return
   localStorage.removeItem(GUEST_ID_KEY)
   localStorage.removeItem(GUEST_USERNAME_KEY)
   localStorage.removeItem(GUEST_STATS_KEY)
+  localStorage.removeItem(GUEST_GAMES_KEY)
   localStorage.removeItem(GUEST_LEVELS_PLAYED_KEY)
   localStorage.removeItem(HAS_SEEN_LOGIN_PROMPT_KEY)
 }
 
-// Check if user is signed in
-export function isSignedIn(): boolean {
-  if (typeof window === 'undefined') return false
-  return false
-}
-
-// Get display name
-export function getDisplayName(): string {
-  if (isSignedIn()) {
-    return 'Player'
-  }
-  return getGuestUsername()
-}
+// Note: isSignedIn and getDisplayName moved to components that use Supabase
+// This avoids circular dependencies

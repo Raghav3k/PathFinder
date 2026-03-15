@@ -2,17 +2,58 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { getGuestUsername, isSignedIn } from '@/lib/guest'
+import { getGuestUsername } from '@/lib/guest'
+import { getUser, onAuthStateChange, signOut } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [username, setUsername] = useState('Guest')
-  const [signedIn, setSignedIn] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    setUsername(getGuestUsername())
-    setSignedIn(isSignedIn())
+    // Check initial auth state
+    const checkUser = async () => {
+      const currentUser = await getUser()
+      setUser(currentUser)
+      if (currentUser) {
+        // Get username from user metadata or email
+        const displayName = currentUser.user_metadata?.username || 
+                           currentUser.email?.split('@')[0] || 
+                           'Player'
+        setUsername(displayName)
+      } else {
+        setUsername(getGuestUsername())
+      }
+      setIsLoading(false)
+    }
+    
+    checkUser()
+
+    // Listen for auth changes
+    const { data: { subscription } } = onAuthStateChange((newUser) => {
+      setUser(newUser)
+      if (newUser) {
+        const displayName = newUser.user_metadata?.username || 
+                           newUser.email?.split('@')[0] || 
+                           'Player'
+        setUsername(displayName)
+      } else {
+        setUsername(getGuestUsername())
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
+
+  const handleSignOut = async () => {
+    await signOut()
+    setUser(null)
+    setUsername(getGuestUsername())
+  }
 
   return (
     <nav className="sticky top-0 z-50 bg-[#0c0c12]/80 backdrop-blur-lg border-b border-white/5">
@@ -44,29 +85,41 @@ export default function Navbar() {
 
           {/* User Section */}
           <div className="hidden md:flex items-center space-x-4">
-            {!signedIn ? (
+            {!isLoading && (
               <>
-                {/* Guest Badge */}
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
-                  <div className="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-xs">
-                    👤
+                {!user ? (
+                  <>
+                    {/* Guest Badge */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
+                      <div className="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-xs">
+                        👤
+                      </div>
+                      <span className="text-sm text-slate-400">{username}</span>
+                    </div>
+                    {/* Sign In Button */}
+                    <Link href="/auth/signin">
+                      <button className="btn-primary text-sm py-2 px-4">
+                        Sign In
+                      </button>
+                    </Link>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <Link href="/profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-sm font-bold text-white">
+                        {username[0].toUpperCase()}
+                      </div>
+                      <span className="text-sm text-slate-300">{username}</span>
+                    </Link>
+                    <button 
+                      onClick={handleSignOut}
+                      className="text-sm text-slate-400 hover:text-white transition-colors"
+                    >
+                      Sign Out
+                    </button>
                   </div>
-                  <span className="text-sm text-slate-400">{username}</span>
-                </div>
-                {/* Sign In Button */}
-                <Link href="/auth/signin">
-                  <button className="btn-primary text-sm py-2 px-4">
-                    Sign In
-                  </button>
-                </Link>
+                )}
               </>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-sm font-bold text-white">
-                  {username[0]}
-                </div>
-                <span className="text-sm text-slate-300">{username}</span>
-              </div>
             )}
           </div>
 
@@ -103,7 +156,7 @@ export default function Navbar() {
             
             {/* Mobile User Section */}
             <div className="pt-4 border-t border-white/10">
-              {!signedIn ? (
+              {!user ? (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-slate-400">Playing as</span>
@@ -116,8 +169,16 @@ export default function Navbar() {
                   </Link>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <span className="text-white">{username}</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white">{username}</span>
+                  </div>
+                  <button 
+                    onClick={handleSignOut}
+                    className="text-sm text-slate-400 hover:text-white transition-colors"
+                  >
+                    Sign Out
+                  </button>
                 </div>
               )}
             </div>
