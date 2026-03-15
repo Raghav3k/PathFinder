@@ -1,23 +1,37 @@
 'use client'
 
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import Navbar from '@/components/ui/Navbar'
+import { getGuestUsername, getGuestStats, GuestStats } from '@/lib/guest'
 
-// Mock stats for now
-const mockStats = {
-  totalGames: 47,
-  perfectSolves: 23,
-  survivalHighScore: 8500,
-  survivalMaxLevel: 8,
-  classicStars: 18,
-  totalPlayTime: 3240, // minutes
+// Default stats
+const defaultStats: GuestStats = {
+  totalGames: 0,
+  perfectSolves: 0,
+  survivalHighScore: 0,
+  survivalMaxLevel: 0,
+  classicStars: {},
+  playTimeMinutes: 0
 }
 
 export default function ProfilePage() {
+  const [username, setUsername] = useState('Guest')
+  const [stats, setStats] = useState<GuestStats>(defaultStats)
+
+  useEffect(() => {
+    setUsername(getGuestUsername())
+    setStats(getGuestStats())
+  }, [])
+
   const formatPlayTime = (minutes: number) => {
     const hours = Math.floor(minutes / 60)
     const mins = minutes % 60
     return `${hours}h ${mins}m`
   }
+
+  // Calculate total stars from classicStars object
+  const totalStars = Object.values(stats.classicStars).reduce((sum, stars) => sum + stars, 0)
 
   return (
     <main className="min-h-screen bg-[#0a0a0f]">
@@ -27,37 +41,39 @@ export default function ProfilePage() {
         <h1 className="text-4xl font-bold text-center mb-12 text-gradient">Your Profile</h1>
 
         {/* Guest Mode Notice */}
-        <div className="game-card mb-8 border border-yellow-500/30 bg-yellow-500/5">
+        <div className="game-card mb-8 border border-amber-500/30 bg-amber-500/5">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
-              <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center">
+              <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
             <div className="flex-1">
-              <h3 className="text-white font-semibold mb-1">Playing as Guest</h3>
-              <p className="text-gray-400 text-sm">
+              <h3 className="text-white font-semibold mb-1">Playing as {username}</h3>
+              <p className="text-slate-400 text-sm">
                 Your progress is saved locally. Sign in to sync across devices and appear on leaderboards.
               </p>
             </div>
-            <button className="btn-primary text-sm whitespace-nowrap">
-              Sign In
-            </button>
+            <Link href="/auth/signin">
+              <button className="btn-primary text-sm whitespace-nowrap">
+                Sign In
+              </button>
+            </Link>
           </div>
         </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
           <div className="stat-card p-6">
-            <div className="stat-value">{mockStats.totalGames}</div>
+            <div className="stat-value">{stats.totalGames}</div>
             <div className="stat-label">Games Played</div>
           </div>
           <div className="stat-card p-6">
-            <div className="stat-value">{mockStats.perfectSolves}</div>
+            <div className="stat-value">{stats.perfectSolves}</div>
             <div className="stat-label">Perfect Solves</div>
           </div>
           <div className="stat-card p-6">
-            <div className="stat-value">{formatPlayTime(mockStats.totalPlayTime)}</div>
+            <div className="stat-value">{formatPlayTime(stats.playTimeMinutes)}</div>
             <div className="stat-label">Play Time</div>
           </div>
         </div>
@@ -92,8 +108,8 @@ export default function ProfilePage() {
           </div>
           
           <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="text-gray-400">Total Stars: {mockStats.classicStars}/24</span>
-            <span className="text-cyan-400">{Math.round((mockStats.classicStars / 24) * 100)}% Complete</span>
+            <span className="text-slate-400">Total Stars: {totalStars}/24</span>
+            <span className="text-amber-400">{Math.round((totalStars / 24) * 100)}% Complete</span>
           </div>
         </div>
 
@@ -110,11 +126,11 @@ export default function ProfilePage() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="stat-card p-4">
-              <div className="stat-value text-yellow-400">{mockStats.survivalHighScore.toLocaleString()}</div>
+              <div className="stat-value text-yellow-400">{stats.survivalHighScore.toLocaleString()}</div>
               <div className="stat-label">High Score</div>
             </div>
             <div className="stat-card p-4">
-              <div className="stat-value text-purple-400">{mockStats.survivalMaxLevel}×{mockStats.survivalMaxLevel}</div>
+              <div className="stat-value text-purple-400">{stats.survivalMaxLevel > 0 ? `${stats.survivalMaxLevel}x${stats.survivalMaxLevel}` : '—'}</div>
               <div className="stat-label">Max Level</div>
             </div>
             <div className="stat-card p-4">

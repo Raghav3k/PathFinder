@@ -2,12 +2,14 @@
 
 import { useState, useCallback, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import Navbar from '@/components/ui/Navbar'
 import GameGrid from '@/components/game/GameGrid'
 import { generateGrid, calculatePathSum, validateSolution, Position, GameGrid as GameGridType, getSurvivalTimeLimit, calculateSurvivalScore } from '@/lib/game'
+import { incrementGuestLevelsPlayed, shouldShowLoginPrompt, markLoginPromptShown } from '@/lib/guest'
 
 type GameMode = 'classic' | 'survival'
-type GameState = 'menu' | 'playing' | 'levelComplete' | 'gameOver'
+type GameState = 'menu' | 'playing' | 'levelComplete' | 'gameOver' | 'loginPrompt'
 
 function GameContent() {
   const searchParams = useSearchParams()
@@ -121,6 +123,16 @@ function GameContent() {
   }, [grid, handleCheckSolution])
 
   const handleNextLevel = () => {
+    // Track levels played as guest
+    incrementGuestLevelsPlayed()
+    
+    // Check if we should show login prompt (after 5 levels)
+    if (shouldShowLoginPrompt()) {
+      markLoginPromptShown()
+      setGameState('loginPrompt')
+      return
+    }
+    
     if (selectedMode === 'classic') {
       if (classicLevel < 10) {
         setClassicLevel(prev => prev + 1)
@@ -505,6 +517,82 @@ function GameContent() {
                   className="w-full py-3 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 font-medium transition-colors"
                 >
                   Back to Menu
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Login Prompt Modal - After 5 levels */}
+        {gameState === 'loginPrompt' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="game-card max-w-md w-full text-center border-amber-500/30">
+              <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">You&apos;re on a Roll!</h2>
+              <p className="text-gray-400 mb-6">
+                You&apos;ve completed 5 levels! Sign in to save your progress and compete on the leaderboard.
+              </p>
+              
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center gap-3 text-sm text-slate-300">
+                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Save progress across devices
+                </div>
+                <div className="flex items-center gap-3 text-sm text-slate-300">
+                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Compete on global leaderboards
+                </div>
+                <div className="flex items-center gap-3 text-sm text-slate-300">
+                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Track your stats over time
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Link href="/auth/signin">
+                  <button className="btn-primary w-full">
+                    Sign In with Google
+                  </button>
+                </Link>
+                <button
+                  onClick={() => {
+                    // Continue as guest - go to next level
+                    if (selectedMode === 'classic') {
+                      if (classicLevel < 10) {
+                        setClassicLevel(prev => prev + 1)
+                        const newGrid = generateGrid(classicLevel + 1, 'corner')
+                        setGrid(newGrid)
+                        setSelectedPath([])
+                        setAttempts(0)
+                        setResult(null)
+                        setGameState('playing')
+                      } else {
+                        setGameState('menu')
+                      }
+                    } else {
+                      setSurvivalLevel(prev => prev + 1)
+                      const newGrid = generateGrid(survivalLevel + 1, 'corner')
+                      setGrid(newGrid)
+                      setSelectedPath([])
+                      setAttempts(0)
+                      setResult(null)
+                      setTimeRemaining(getSurvivalTimeLimit(survivalLevel + 1))
+                      setGameState('playing')
+                    }
+                  }}
+                  className="w-full py-3 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 font-medium transition-colors"
+                >
+                  Continue as Guest
                 </button>
               </div>
             </div>
