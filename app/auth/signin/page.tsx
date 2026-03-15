@@ -6,13 +6,22 @@ import { useRouter } from 'next/navigation'
 import Navbar from '@/components/ui/Navbar'
 import { signInWithGoogle, getUser } from '@/lib/supabase'
 
-
 export default function SignInPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [debugInfo, setDebugInfo] = useState('')
 
   useEffect(() => {
+    // Debug: Check if env vars are available
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const hasKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    
+    console.log('Debug - Supabase URL:', supabaseUrl)
+    console.log('Debug - Has Anon Key:', hasKey)
+    
+    setDebugInfo(`URL: ${supabaseUrl ? 'Set' : 'Missing'} | Key: ${hasKey ? 'Set' : 'Missing'}`)
+    
     // Check if already signed in
     const checkUser = async () => {
       const user = await getUser()
@@ -24,13 +33,17 @@ export default function SignInPage() {
   }, [router])
 
   const handleGoogleSignIn = async () => {
+    console.log('Sign in button clicked')
     setIsLoading(true)
     setMessage('')
     
     try {
-      await signInWithGoogle()
+      console.log('Calling signInWithGoogle...')
+      const result = await signInWithGoogle()
+      console.log('Sign in result:', result)
       // Redirect happens via OAuth callback
-    } catch {
+    } catch (err) {
+      console.error('Sign in error:', err)
       setMessage('Failed to sign in. Please try again.')
       setIsLoading(false)
     }
@@ -44,6 +57,11 @@ export default function SignInPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Welcome Back!</h1>
           <p className="text-slate-400">Sign in to save your progress and compete on leaderboards</p>
+        </div>
+
+        {/* Debug Info */}
+        <div className="mb-4 p-2 rounded bg-slate-800 text-xs text-slate-400 text-center">
+          Debug: {debugInfo}
         </div>
 
         {message && (
