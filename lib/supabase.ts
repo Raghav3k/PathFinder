@@ -1,4 +1,4 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Session, User } from '@supabase/supabase-js'
 
 // Types for our database
@@ -17,24 +17,17 @@ export type GameResult = {
   created_at?: string
 }
 
-export type UserStats = {
-  user_id: string
-  stats: {
-    classic_stars: number
-    survival_high_score: number
-    survival_max_level: number
-    total_games: number
-    perfect_solves: number
-    play_time_minutes: number
-  }
-}
-
 // Create Supabase client
 export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  
+  if (!supabaseUrl || !supabaseKey) {
+    console.error('Missing Supabase environment variables')
+    throw new Error('Supabase configuration missing')
+  }
+  
+  return createSupabaseClient(supabaseUrl, supabaseKey)
 }
 
 // Game functions
@@ -78,7 +71,7 @@ export async function getUserStats(userId: string) {
     .eq('user_id', userId)
     .single()
   
-  if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+  if (error && error.code !== 'PGRST116') {
     console.error('Error fetching user stats:', error)
     throw error
   }
@@ -92,7 +85,9 @@ export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${window.location.origin}/auth/callback`
+      redirectTo: typeof window !== 'undefined' 
+        ? `${window.location.origin}/auth/callback/`
+        : '/auth/callback/'
     }
   })
   

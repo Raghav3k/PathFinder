@@ -2,7 +2,6 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
-// Force dynamic rendering for OAuth callback
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
@@ -33,6 +32,5 @@ export async function GET(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  // URL to redirect to after sign in process completes
-  return NextResponse.redirect(requestUrl.origin + '/profile')
+  return NextResponse.redirect(requestUrl.origin + '/profile/')
 }
