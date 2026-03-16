@@ -1,5 +1,5 @@
 // Progress tracking for signed-in users
-// VERSION: 2026-03-16-v8 - Use Supabase client for auto token refresh
+// VERSION: 2026-03-16-v9 - Include user_id in inserts
 
 import { supabase } from './supabase'
 
@@ -33,9 +33,19 @@ export async function saveGameResult(result: GameResult): Promise<boolean> {
   console.log('[DEBUG] saveGameResult called')
   
   try {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.error('[DEBUG] No user found')
+      return false
+    }
+    
+    console.log('[DEBUG] Saving for user:', user.id)
+    
     const { error } = await supabase
       .from('game_results')
       .insert({
+        user_id: user.id,  // <-- IMPORTANT: Include user_id
         mode: result.mode,
         grid_size: result.level,
         score: result.score,
@@ -62,10 +72,20 @@ export async function saveClassicProgress(level: number, stars: number): Promise
   console.log('[DEBUG] saveClassicProgress called')
   
   try {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.error('[DEBUG] No user found')
+      return false
+    }
+    
+    console.log('[DEBUG] Saving progress for user:', user.id)
+    
     // Check if there's an existing record
     const { data: existing, error: checkError } = await supabase
       .from('classic_progress')
       .select('stars, attempts, perfect_solves')
+      .eq('user_id', user.id)  // <-- Filter by user_id
       .eq('grid_size', level)
       .eq('mode', 'corner')
       .single()
@@ -81,6 +101,7 @@ export async function saveClassicProgress(level: number, stars: number): Promise
     const { error } = await supabase
       .from('classic_progress')
       .upsert({
+        user_id: user.id,  // <-- IMPORTANT: Include user_id
         grid_size: level,
         mode: 'corner',
         stars: bestStars,
@@ -111,10 +132,18 @@ export async function fetchUserStats(): Promise<UserStats | null> {
   console.log('[DEBUG] fetchUserStats called')
   
   try {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.error('[DEBUG] No user found')
+      return null
+    }
+    
     // Fetch total games played from game_results
     const { data: scores, error: scoresError } = await supabase
       .from('game_results')
       .select('score')
+      .eq('user_id', user.id)  // <-- Filter by user_id
 
     if (scoresError) {
       console.error('[DEBUG] Error fetching scores:', scoresError)
@@ -124,6 +153,7 @@ export async function fetchUserStats(): Promise<UserStats | null> {
     const { data: progress, error: progressError } = await supabase
       .from('classic_progress')
       .select('grid_size,stars')
+      .eq('user_id', user.id)  // <-- Filter by user_id
 
     if (progressError) {
       console.error('[DEBUG] Error fetching progress:', progressError)
@@ -157,9 +187,13 @@ export async function fetchUserStats(): Promise<UserStats | null> {
 // Fetch recent games
 export async function fetchRecentGames(limit: number = 10): Promise<GameRecord[]> {
   try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return []
+    
     const { data, error } = await supabase
       .from('game_results')
       .select('*')
+      .eq('user_id', user.id)  // <-- Filter by user_id
       .order('created_at', { ascending: false })
       .limit(limit)
 
