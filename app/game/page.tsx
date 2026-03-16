@@ -45,33 +45,42 @@ function GameContent() {
   
   // Check if user is signed in
   const [userSignedIn, setUserSignedIn] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
   
-  // Load saved state on mount
+  // Load saved state and check auth on mount
   useEffect(() => {
-    const savedState = loadGameState()
-    if (savedState && savedState.gameState !== 'menu') {
-      console.log('[DEBUG] Restoring saved game state:', savedState)
-      setSelectedMode(savedState.selectedMode)
-      setClassicLevel(savedState.classicLevel)
-      setClassicStars(savedState.classicStars)
-      setSurvivalLevel(savedState.survivalLevel)
-      setSurvivalLives(savedState.survivalLives)
-      setSurvivalScore(savedState.survivalScore)
-      setSurvivalCombo(savedState.survivalCombo)
-      setGameState(savedState.gameState)
-      setAttempts(savedState.attempts)
+    const init = async () => {
+      // Check auth status
+      const signedIn = await isAuthenticated()
+      setUserSignedIn(signedIn)
+      setAuthChecked(true)
       
-      // Regenerate grid for the current level
-      const level = savedState.selectedMode === 'classic' ? savedState.classicLevel : savedState.survivalLevel
-      const newGrid = generateGrid(level, 'corner')
-      setGrid(newGrid)
-      
-      if (savedState.selectedMode === 'survival') {
-        setTimeRemaining(getSurvivalTimeLimit(level))
+      // Load saved game state
+      const savedState = loadGameState()
+      if (savedState && savedState.gameState !== 'menu') {
+        console.log('[DEBUG] Restoring saved game state:', savedState)
+        setSelectedMode(savedState.selectedMode)
+        setClassicLevel(savedState.classicLevel)
+        setClassicStars(savedState.classicStars)
+        setSurvivalLevel(savedState.survivalLevel)
+        setSurvivalLives(savedState.survivalLives)
+        setSurvivalScore(savedState.survivalScore)
+        setSurvivalCombo(savedState.survivalCombo)
+        setGameState(savedState.gameState)
+        setAttempts(savedState.attempts)
+        
+        // Regenerate grid for the current level
+        const level = savedState.selectedMode === 'classic' ? savedState.classicLevel : savedState.survivalLevel
+        const newGrid = generateGrid(level, 'corner')
+        setGrid(newGrid)
+        
+        if (savedState.selectedMode === 'survival') {
+          setTimeRemaining(getSurvivalTimeLimit(level))
+        }
       }
     }
     
-    setUserSignedIn(isAuthenticated())
+    init()
   }, [])
 
   // Save state whenever it changes (but not for menu)

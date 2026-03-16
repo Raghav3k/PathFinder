@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Navbar from '@/components/ui/Navbar'
-import { getAuthToken, clearAuth } from '@/lib/auth'
+import { isAuthenticated, clearAuth } from '@/lib/auth'
 import { fetchUserStats, fetchRecentGames } from '@/lib/progress'
 
 interface GameRecord {
@@ -22,51 +22,31 @@ interface UserStats {
   classicProgress: Record<string, number>
 }
 
-// VERSION: 2026-03-16-v5
+// VERSION: 2026-03-16-v8
 export default function ProfilePage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthenticatedState, setIsAuthenticatedState] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState<UserStats | null>(null)
   const [recentGames, setRecentGames] = useState<GameRecord[]>([])
 
   useEffect(() => {
-    // Check auth with retry for OAuth redirect race condition
-    const checkAuth = async () => {
-      const token = getAuthToken()
-      if (token) {
-        setIsAuthenticated(true)
+    // Check auth and fetch data
+    const loadProfile = async () => {
+      const signedIn = await isAuthenticated()
+      setIsAuthenticatedState(signedIn)
+      
+      if (signedIn) {
         // Fetch user stats
         const userStats = await fetchUserStats()
         setStats(userStats)
         const games = await fetchRecentGames(5)
         setRecentGames(games)
-        setIsLoading(false)
-        return true
       }
-      return false
+      
+      setIsLoading(false)
     }
-
-    // Initial check
-    checkAuth().then(found => {
-      if (!found) {
-        // Retry after short delays (OAuth redirect timing issue)
-        const delays = [200, 500, 1000, 2000]
-        delays.forEach((delay, index) => {
-          setTimeout(() => {
-            checkAuth().then(retryFound => {
-              if (retryFound && index < delays.length - 1) {
-                // Found it, no need for more checks
-              }
-            })
-          }, delay)
-        })
-        
-        // Final check - if still not authenticated, show sign in
-        setTimeout(() => {
-          setIsLoading(false)
-        }, 2500)
-      }
-    })
+    
+    loadProfile()
   }, [])
 
   const handleSignOut = () => {
@@ -86,7 +66,7 @@ export default function ProfilePage() {
     )
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticatedState) {
     return (
       <main className="min-h-screen bg-[#0c0c12]">
         <Navbar />
