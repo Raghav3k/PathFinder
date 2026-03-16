@@ -43,6 +43,9 @@ function GameContent() {
     optimalSum: number
   } | null>(null)
   
+  // Grid key for forcing re-render
+  const [gridKey, setGridKey] = useState(0)
+  
   // Check if user is signed in
   const [userSignedIn, setUserSignedIn] = useState(false)
   
@@ -71,6 +74,7 @@ function GameContent() {
         const level = savedState.selectedMode === 'classic' ? savedState.classicLevel : savedState.survivalLevel
         const newGrid = generateGrid(level, 'corner')
         setGrid(newGrid)
+        setGridKey(prev => prev + 1) // Force grid re-render
         
         if (savedState.selectedMode === 'survival') {
           setTimeRemaining(getSurvivalTimeLimit(level))
@@ -124,6 +128,7 @@ function GameContent() {
     setSelectedPath([])
     setAttempts(0)
     setResult(null)
+    setGridKey(prev => prev + 1) // Force grid re-render
     
     if (mode === 'classic') {
       const newGrid = generateGrid(classicLevel, 'corner')
@@ -232,14 +237,18 @@ function GameContent() {
       }
     }
     
+    // Reset all game state before starting next level
+    setSelectedPath([])
+    setAttempts(0)
+    setResult(null)
+    setGridKey(prev => prev + 1) // Force grid re-render
+    
     if (selectedMode === 'classic') {
       if (classicLevel < 10) {
-        setClassicLevel(prev => prev + 1)
-        const newGrid = generateGrid(classicLevel + 1, 'corner')
+        const nextLevel = classicLevel + 1
+        setClassicLevel(nextLevel)
+        const newGrid = generateGrid(nextLevel, 'corner')
         setGrid(newGrid)
-        setSelectedPath([])
-        setAttempts(0)
-        setResult(null)
         setGameState('playing')
       } else {
         // Max level reached
@@ -248,13 +257,11 @@ function GameContent() {
       }
     } else {
       // Survival mode - continue to next level
-      setSurvivalLevel(prev => prev + 1)
-      const newGrid = generateGrid(survivalLevel + 1, 'corner')
+      const nextLevel = survivalLevel + 1
+      setSurvivalLevel(nextLevel)
+      const newGrid = generateGrid(nextLevel, 'corner')
       setGrid(newGrid)
-      setSelectedPath([])
-      setAttempts(0)
-      setResult(null)
-      setTimeRemaining(getSurvivalTimeLimit(survivalLevel + 1))
+      setTimeRemaining(getSurvivalTimeLimit(nextLevel))
       setGameState('playing')
     }
   }
@@ -263,6 +270,7 @@ function GameContent() {
     setSelectedPath([])
     setAttempts(0)
     setResult(null)
+    setGridKey(prev => prev + 1) // Force grid re-render
     setGameState('playing')
     
     if (selectedMode === 'survival') {
@@ -275,6 +283,7 @@ function GameContent() {
     setGameState('menu')
     setSelectedPath([])
     setResult(null)
+    setGridKey(prev => prev + 1) // Force grid re-render
     
     if (selectedMode === 'survival') {
       setSurvivalLevel(3)
@@ -426,6 +435,7 @@ function GameContent() {
           <div className="flex-1 flex justify-center">
             {grid && (
               <GameGrid
+                key={gridKey} // Force re-render on level change
                 grid={grid}
                 selectedPath={selectedPath}
                 onPathChange={handlePathChange}

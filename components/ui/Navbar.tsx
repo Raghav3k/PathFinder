@@ -6,7 +6,7 @@ import { getGuestUsername } from '@/lib/guest'
 import { useAuth } from '@/hooks/useAuth'
 import { clearAuth } from '@/lib/auth'
 
-// VERSION: 2026-03-16-v3
+// VERSION: 2026-03-16-v9 - Fixed sign out
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [username, setUsername] = useState('Guest')
@@ -21,10 +21,10 @@ export default function Navbar() {
     }
   }, [isSignedIn])
 
-  const handleSignOut = () => {
-    clearAuth()
-    setUsername(getGuestUsername())
-    window.location.reload()
+  const handleSignOut = async () => {
+    await clearAuth()
+    // Force page reload to clear all state and redirect to home
+    window.location.href = '/'
   }
 
   return (
