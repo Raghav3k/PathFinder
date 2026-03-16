@@ -9,6 +9,7 @@ import { generateGrid, calculatePathSum, validateSolution, Position, GameGrid as
 import { incrementGuestLevelsPlayed, shouldShowLoginPrompt, markLoginPromptShown } from '@/lib/guest'
 import { saveGameResult, saveClassicProgress } from '@/lib/progress'
 import { isAuthenticated } from '@/lib/auth'
+import { saveGameState, loadGameState, clearGameState } from '@/lib/gameState'
 
 type GameMode = 'classic' | 'survival'
 type GameState = 'menu' | 'playing' | 'levelComplete' | 'gameOver' | 'loginPrompt'
@@ -45,9 +46,50 @@ function GameContent() {
   // Check if user is signed in
   const [userSignedIn, setUserSignedIn] = useState(false)
   
+  // Load saved state on mount
   useEffect(() => {
+    const savedState = loadGameState()
+    if (savedState && savedState.gameState !== 'menu') {
+      console.log('[DEBUG] Restoring saved game state:', savedState)
+      setSelectedMode(savedState.selectedMode)
+      setClassicLevel(savedState.classicLevel)
+      setClassicStars(savedState.classicStars)
+      setSurvivalLevel(savedState.survivalLevel)
+      setSurvivalLives(savedState.survivalLives)
+      setSurvivalScore(savedState.survivalScore)
+      setSurvivalCombo(savedState.survivalCombo)
+      setGameState(savedState.gameState)
+      setAttempts(savedState.attempts)
+      
+      // Regenerate grid for the current level
+      const level = savedState.selectedMode === 'classic' ? savedState.classicLevel : savedState.survivalLevel
+      const newGrid = generateGrid(level, 'corner')
+      setGrid(newGrid)
+      
+      if (savedState.selectedMode === 'survival') {
+        setTimeRemaining(getSurvivalTimeLimit(level))
+      }
+    }
+    
     setUserSignedIn(isAuthenticated())
   }, [])
+
+  // Save state whenever it changes (but not for menu)
+  useEffect(() => {
+    if (gameState !== 'menu' && typeof window !== 'undefined') {
+      saveGameState({
+        selectedMode,
+        classicLevel,
+        classicStars,
+        survivalLevel,
+        survivalLives,
+        survivalScore,
+        survivalCombo,
+        gameState,
+        attempts
+      })
+    }
+  }, [selectedMode, classicLevel, classicStars, survivalLevel, survivalLives, survivalScore, survivalCombo, gameState, attempts])
 
   // Timer effect
   useEffect(() => {
@@ -67,6 +109,9 @@ function GameContent() {
   }, [gameState, selectedMode])
 
   const startGame = useCallback((mode: GameMode) => {
+    // Clear any saved state when starting fresh
+    clearGameState()
+    
     setSelectedMode(mode)
     setGameState('playing')
     setSelectedPath([])
@@ -191,6 +236,7 @@ function GameContent() {
         setGameState('playing')
       } else {
         // Max level reached
+        clearGameState()
         setGameState('menu')
       }
     } else {
@@ -218,6 +264,7 @@ function GameContent() {
   }
 
   const handleReset = () => {
+    clearGameState()
     setGameState('menu')
     setSelectedPath([])
     setResult(null)
@@ -549,6 +596,7 @@ function GameContent() {
               <div className="space-y-2">
                 <button
                   onClick={() => {
+                    clearGameState()
                     setSurvivalLevel(3)
                     setSurvivalLives(3)
                     setSurvivalScore(0)

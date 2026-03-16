@@ -1,5 +1,5 @@
 // Progress tracking for signed-in users
-// VERSION: 2026-03-16-v6 - Fixed column names to match schema
+// VERSION: 2026-03-16-v7 - Added debug logging
 
 import { getAuthToken } from './auth'
 
@@ -33,7 +33,23 @@ interface GameRecord {
 // Save game result to Supabase (using game_results table)
 export async function saveGameResult(result: GameResult): Promise<boolean> {
   const token = getAuthToken()
-  if (!token) return false
+  console.log('[DEBUG] saveGameResult called, token exists:', !!token)
+  
+  if (!token) {
+    console.log('[DEBUG] No token, skipping save')
+    return false
+  }
+
+  const payload = {
+    mode: result.mode,
+    grid_size: result.level,
+    score: result.score,
+    is_perfect: result.completed && result.attempts === 1,
+    time_seconds: 0,
+    path_length: 0,
+    created_at: new Date().toISOString()
+  }
+  console.log('[DEBUG] Saving game result:', payload)
 
   try {
     const response = await fetch(`${SUPABASE_URL}/rest/v1/game_results`, {
@@ -44,20 +60,17 @@ export async function saveGameResult(result: GameResult): Promise<boolean> {
         'Content-Type': 'application/json',
         'Prefer': 'return=minimal'
       },
-      body: JSON.stringify({
-        mode: result.mode,
-        grid_size: result.level, // schema uses grid_size
-        score: result.score,
-        is_perfect: result.completed && result.attempts === 1,
-        time_seconds: 0,
-        path_length: 0,
-        created_at: new Date().toISOString()
-      })
+      body: JSON.stringify(payload)
     })
 
+    console.log('[DEBUG] game_results response status:', response.status)
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[DEBUG] game_results error:', errorText)
+    }
     return response.ok
   } catch (err) {
-    console.error('Failed to save game result:', err)
+    console.error('[DEBUG] Failed to save game result:', err)
     return false
   }
 }
@@ -65,27 +78,34 @@ export async function saveGameResult(result: GameResult): Promise<boolean> {
 // Save classic mode progress
 export async function saveClassicProgress(level: number, stars: number): Promise<boolean> {
   const token = getAuthToken()
-  if (!token) return false
+  console.log('[DEBUG] saveClassicProgress called, token exists:', !!token)
+  
+  if (!token) {
+    console.log('[DEBUG] No token, skipping save')
+    return false
+  }
 
   try {
-    // Check if there's an existing record - schema uses grid_size not level
-    const checkResponse = await fetch(
-      `${SUPABASE_URL}/rest/v1/classic_progress?grid_size=eq.${level}&mode=eq.corner`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-        }
+    // Check if there's an existing record
+    const checkUrl = `${SUPABASE_URL}/rest/v1/classic_progress?grid_size=eq.${level}&mode=eq.corner`
+    console.log('[DEBUG] Checking existing progress:', checkUrl)
+    
+    const checkResponse = await fetch(checkUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
       }
-    )
+    })
 
     const existing = await checkResponse.json() as Array<{ stars: number; id: string; attempts: number; perfect_solves: number }>
+    console.log('[DEBUG] Existing progress:', existing)
+    
     const bestStars = existing.length > 0 ? Math.max(existing[0].stars, stars) : stars
     const isPerfect = stars === 3
     
     // Build the upsert data
     const upsertData = {
-      grid_size: level, // schema uses grid_size
+      grid_size: level,
       mode: 'corner',
       stars: bestStars,
       attempts: existing.length > 0 ? existing[0].attempts + 1 : 1,
@@ -94,6 +114,7 @@ export async function saveClassicProgress(level: number, stars: number): Promise
         : (isPerfect ? 1 : 0),
       updated_at: new Date().toISOString()
     }
+    console.log('[DEBUG] Upserting progress:', upsertData)
 
     // Use POST with merge-duplicates for upsert
     const response = await fetch(`${SUPABASE_URL}/rest/v1/classic_progress`, {
@@ -107,9 +128,14 @@ export async function saveClassicProgress(level: number, stars: number): Promise
       body: JSON.stringify(upsertData)
     })
 
+    console.log('[DEBUG] classic_progress response status:', response.status)
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[DEBUG] classic_progress error:', errorText)
+    }
     return response.ok
   } catch (err) {
-    console.error('Failed to save classic progress:', err)
+    console.error('[DEBUG] Failed to save classic progress:', err)
     return false
   }
 }
@@ -117,6 +143,8 @@ export async function saveClassicProgress(level: number, stars: number): Promise
 // Fetch user stats
 export async function fetchUserStats(): Promise<UserStats | null> {
   const token = getAuthToken()
+  console.log('[DEBUG] fetchUserStats called, token exists:', !!token)
+  
   if (!token) return null
 
   try {
@@ -132,8 +160,9 @@ export async function fetchUserStats(): Promise<UserStats | null> {
     )
 
     const scores = await scoresResponse.json() as Array<{ score: number }>
+    console.log('[DEBUG] Fetched scores count:', scores.length)
     
-    // Fetch classic progress - schema uses grid_size
+    // Fetch classic progress
     const progressResponse = await fetch(
       `${SUPABASE_URL}/rest/v1/classic_progress?select=grid_size,stars`,
       {
@@ -145,6 +174,7 @@ export async function fetchUserStats(): Promise<UserStats | null> {
     )
 
     const progress = await progressResponse.json() as Array<{ grid_size: number; stars: number }>
+    console.log('[DEBUG] Fetched progress count:', progress.length)
 
     const totalGames = scores.length
     const levelsCompleted = progress.length
@@ -164,7 +194,7 @@ export async function fetchUserStats(): Promise<UserStats | null> {
       classicProgress
     }
   } catch (err) {
-    console.error('Failed to fetch user stats:', err)
+    console.error('[DEBUG] Failed to fetch user stats:', err)
     return null
   }
 }
@@ -187,7 +217,7 @@ export async function fetchRecentGames(limit: number = 10): Promise<GameRecord[]
 
     return await response.json() as GameRecord[]
   } catch (err) {
-    console.error('Failed to fetch recent games:', err)
+    console.error('[DEBUG] Failed to fetch recent games:', err)
     return []
   }
 }
