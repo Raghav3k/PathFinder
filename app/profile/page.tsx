@@ -1,157 +1,135 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Navbar from '@/components/ui/Navbar'
-import { getGuestUsername, getGuestStats, GuestStats } from '@/lib/guest'
+import { getAuthToken, clearAuth } from '@/lib/auth'
 
-const defaultStats: GuestStats = {
-  totalGames: 0,
-  perfectSolves: 0,
-  survivalHighScore: 0,
-  survivalMaxLevel: 0,
-  classicStars: {},
-  playTimeMinutes: 0
-}
-
+// VERSION: 2026-03-16-v3
 export default function ProfilePage() {
-  const [username, setUsername] = useState('Guest')
-  const [isSignedIn, setIsSignedIn] = useState(false)
-  const [stats, setStats] = useState<GuestStats>(defaultStats)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Check auth
-    const token = localStorage.getItem('pf_token')
-    if (token) {
-      setIsSignedIn(true)
-      setUsername('Player')
-    } else {
-      setUsername(getGuestUsername())
-      setStats(getGuestStats())
+    // Check auth with retry for OAuth redirect race condition
+    const checkAuth = () => {
+      const token = getAuthToken()
+      if (token) {
+        setIsAuthenticated(true)
+        setIsLoading(false)
+        return true
+      }
+      return false
+    }
+
+    // Initial check
+    if (!checkAuth()) {
+      // Retry after short delays (OAuth redirect timing issue)
+      const delays = [200, 500, 1000, 2000]
+      delays.forEach((delay, index) => {
+        setTimeout(() => {
+          if (checkAuth() && index < delays.length - 1) {
+            // Found it, no need for more checks
+          }
+        }, delay)
+      })
+      
+      // Final check - if still not authenticated, show sign in
+      setTimeout(() => {
+        setIsLoading(false)
+      }, 2500)
     }
   }, [])
 
   const handleSignOut = () => {
-    localStorage.removeItem('pf_token')
-    localStorage.removeItem('pf_refresh')
-    window.location.reload()
+    clearAuth()
+    window.location.href = '/'
   }
 
-  const formatPlayTime = (minutes: number) => {
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    return `${hours}h ${mins}m`
+  if (isLoading) {
+    return (
+      <main className="min-h-screen bg-[#0c0c12]">
+        <Navbar />
+        <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+          <div className="w-12 h-12 mx-auto border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-400 mt-4">Loading profile...</p>
+        </div>
+      </main>
+    )
   }
 
-  const totalStars = Object.values(stats.classicStars).reduce((sum, stars) => sum + stars, 0)
+  if (!isAuthenticated) {
+    return (
+      <main className="min-h-screen bg-[#0c0c12]">
+        <Navbar />
+        <div className="max-w-md mx-auto px-4 py-16">
+          <div className="game-card text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-500/20 flex items-center justify-center text-2xl">🔒</div>
+            <h1 className="text-2xl font-bold text-white mb-2">Sign In Required</h1>
+            <p className="text-slate-400 mb-6">Please sign in to view your profile and track your progress.</p>
+            <div className="space-y-3">
+              <Link href="/auth/signin/" className="btn-primary block py-3">
+                Sign In
+              </Link>
+              <Link href="/game/" className="text-slate-400 hover:text-white text-sm">
+                Continue as Guest →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-[#0c0c12]">
       <Navbar />
       
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <h1 className="text-4xl font-bold text-center mb-12 text-gradient">Your Profile</h1>
-
-        {/* Auth Notice */}
-        {!isSignedIn ? (
-          <div className="game-card mb-8 border border-amber-500/30 bg-amber-500/5">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center text-2xl">👤</div>
-              <div className="flex-1">
-                <h3 className="text-white font-semibold mb-1">Playing as {username}</h3>
-                <p className="text-slate-400 text-sm">Sign in to save progress across devices.</p>
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold text-white mb-8">Your Profile</h1>
+        
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Stats Card */}
+          <div className="game-card">
+            <h2 className="text-xl font-semibold text-white mb-4">Statistics</h2>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Games Played</span>
+                <span className="text-white font-medium">0</span>
               </div>
-              <Link href="/auth/signin/">
-                <button className="btn-primary text-sm whitespace-nowrap">Sign In</button>
-              </Link>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Levels Completed</span>
+                <span className="text-white font-medium">0</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Best Score</span>
+                <span className="text-white font-medium">-</span>
+              </div>
             </div>
           </div>
-        ) : (
-          <div className="game-card mb-8 border border-green-500/30 bg-green-500/5">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center text-2xl">✅</div>
-              <div className="flex-1">
-                <h3 className="text-white font-semibold mb-1">Welcome, {username}!</h3>
-                <p className="text-slate-400 text-sm">Your progress is saved to the cloud.</p>
-              </div>
+
+          {/* Account Card */}
+          <div className="game-card">
+            <h2 className="text-xl font-semibold text-white mb-4">Account</h2>
+            <div className="space-y-4">
+              <p className="text-slate-400">Signed in with Google</p>
               <button 
                 onClick={handleSignOut}
-                className="py-2 px-4 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-sm"
+                className="btn-secondary w-full py-2"
               >
                 Sign Out
               </button>
             </div>
           </div>
-        )}
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-          <div className="stat-card p-6">
-            <div className="stat-value">{stats.totalGames}</div>
-            <div className="stat-label">Games Played</div>
-          </div>
-          <div className="stat-card p-6">
-            <div className="stat-value">{stats.perfectSolves}</div>
-            <div className="stat-label">Perfect Solves</div>
-          </div>
-          <div className="stat-card p-6">
-            <div className="stat-value">{formatPlayTime(stats.playTimeMinutes)}</div>
-            <div className="stat-label">Play Time</div>
-          </div>
         </div>
 
-        {/* Classic Progress */}
-        <div className="game-card mb-8">
-          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
-            <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-sm">⭐</span>
-            Classic Mode Progress
-          </h2>
-          
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-            {[3, 4, 5, 6, 7, 8, 9, 10].map((size) => {
-              const stars = stats.classicStars[size] || 0
-              return (
-                <div key={size} className="text-center">
-                  <div className={`aspect-square rounded-xl flex flex-col items-center justify-center text-xs ${
-                    stars > 0 ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-white/5 border border-white/10'
-                  }`}>
-                    <span className="font-bold text-white">{size}x{size}</span>
-                    <span>{stars > 0 ? '⭐'.repeat(stars) : '🔒'}</span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="text-slate-400">Total Stars: {totalStars}/24</span>
-            <span className="text-amber-400">{Math.round((totalStars / 24) * 100)}% Complete</span>
-          </div>
-        </div>
-
-        {/* Survival Stats */}
-        <div className="game-card">
-          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
-            <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-sm">⚡</span>
-            Survival Mode Stats
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="stat-card p-4">
-              <div className="stat-value text-yellow-400">{stats.survivalHighScore.toLocaleString()}</div>
-              <div className="stat-label">High Score</div>
-            </div>
-            <div className="stat-card p-4">
-              <div className="stat-value text-purple-400">
-                {stats.survivalMaxLevel > 0 ? `${stats.survivalMaxLevel}x${stats.survivalMaxLevel}` : '—'}
-              </div>
-              <div className="stat-label">Max Level</div>
-            </div>
-            <div className="stat-card p-4">
-              <div className="stat-value text-green-400">Top 15%</div>
-              <div className="stat-label">Global Rank</div>
-            </div>
-          </div>
+        {/* Recent Activity */}
+        <div className="mt-8 game-card">
+          <h2 className="text-xl font-semibold text-white mb-4">Recent Activity</h2>
+          <p className="text-slate-400">No recent games. Start playing!</p>
+          <Link href="/game/" className="btn-primary inline-block mt-4 px-6 py-2">
+            Play Now
+          </Link>
         </div>
       </div>
     </main>

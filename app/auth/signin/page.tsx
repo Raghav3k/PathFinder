@@ -1,21 +1,46 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Navbar from '@/components/ui/Navbar'
+import { isAuthenticated } from '@/lib/auth'
 
-// Build: 2026-03-16-v3-FINAL
 const SUPABASE_URL = 'https://kcbvupdqgbevatxctlbb.supabase.co'
 
+// VERSION: 2026-03-16-v3
 export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false)
+  const [isAlreadySignedIn, setIsAlreadySignedIn] = useState(false)
+
+  useEffect(() => {
+    // If already signed in, redirect to profile
+    if (isAuthenticated()) {
+      setIsAlreadySignedIn(true)
+      window.location.href = '/profile/'
+    }
+  }, [])
 
   const handleGoogleSignIn = () => {
     setIsLoading(true)
-    const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    const redirectTo = `${origin}/auth/callback/`
+    
+    // Use exact main domain - not the deployment-specific URL
+    const redirectTo = 'https://pathfinder-dvg.pages.dev/auth/callback/'
+    
     const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
+    
     window.location.href = authUrl
+  }
+
+  if (isAlreadySignedIn) {
+    return (
+      <main className="min-h-screen bg-[#0c0c12]">
+        <Navbar />
+        <div className="max-w-md mx-auto px-4 py-16 text-center">
+          <div className="w-12 h-12 mx-auto border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-400 mt-4">Already signed in. Redirecting...</p>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -26,7 +51,7 @@ export default function SignInPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Welcome Back!</h1>
           <p className="text-slate-400">Sign in to save your progress</p>
-          <p className="text-xs text-slate-600 mt-2">v3</p>
+          <p className="text-xs text-slate-600 mt-2">v3-fixed-auth</p>
         </div>
 
         <div className="game-card space-y-4">
@@ -49,7 +74,6 @@ export default function SignInPage() {
             Sign in with Google
           </button>
 
-          {/* Divider */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-white/10"></div>
@@ -59,7 +83,6 @@ export default function SignInPage() {
             </div>
           </div>
 
-          {/* Guest */}
           <Link href="/game/">
             <button className="w-full py-3 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 font-medium transition-colors">
               Play as Guest
@@ -67,7 +90,6 @@ export default function SignInPage() {
           </Link>
         </div>
 
-        {/* Back */}
         <div className="mt-8 text-center">
           <Link href="/game/" className="text-slate-400 hover:text-white text-sm transition-colors">
             ← Back to game

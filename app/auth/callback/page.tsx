@@ -2,42 +2,44 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { setAuthToken } from '@/lib/auth'
 
-// VERSION: 2026-03-16-v2
+// VERSION: 2026-03-16-v3
 export default function AuthCallbackPage() {
   const [status, setStatus] = useState('Completing sign in...')
 
   useEffect(() => {
-    // Check URL for access token
-    const hash = window.location.hash
-    const params = new URLSearchParams(hash.substring(1))
-    const accessToken = params.get('access_token')
-    const refreshToken = params.get('refresh_token')
+    const handleCallback = () => {
+      // Check URL for access token (Supabase sends it in hash)
+      const hash = window.location.hash
+      const params = new URLSearchParams(hash.substring(1))
+      const accessToken = params.get('access_token')
+      const refreshToken = params.get('refresh_token')
 
-    if (accessToken) {
-      // Save tokens
-      localStorage.setItem('pf_token', accessToken)
-      if (refreshToken) {
-        localStorage.setItem('pf_refresh', refreshToken)
-      }
-      setStatus('Success! Redirecting...')
-      
-      // Redirect to profile
-      setTimeout(() => {
-        window.location.href = '/profile/'
-      }, 1000)
-    } else {
-      // Check for error
-      const error = params.get('error_description')
-      if (error) {
-        setStatus('Sign in failed: ' + error)
+      if (accessToken) {
+        // Save tokens - this also dispatches auth-change event
+        setAuthToken(accessToken, refreshToken || undefined)
+        setStatus('Success! Redirecting...')
+        
+        // Wait a bit longer to ensure localStorage is written
+        setTimeout(() => {
+          window.location.replace('/profile/')
+        }, 1500)
       } else {
-        setStatus('Processing...')
+        // Check for error
+        const error = params.get('error_description')
+        if (error) {
+          setStatus('Sign in failed: ' + error)
+        } else {
+          setStatus('No auth data found. Please try again.')
+        }
       }
     }
+
+    handleCallback()
   }, [])
 
-  const isError = status.includes('failed')
+  const isError = status.includes('failed') || status.includes('No auth')
 
   return (
     <main className="min-h-screen bg-[#0c0c12] flex items-center justify-center">

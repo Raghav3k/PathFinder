@@ -3,28 +3,26 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { getGuestUsername } from '@/lib/guest'
+import { useAuth } from '@/hooks/useAuth'
+import { clearAuth } from '@/lib/auth'
 
-// VERSION: 2026-03-16-v2
+// VERSION: 2026-03-16-v3
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [username, setUsername] = useState('Guest')
-  const [isSignedIn, setIsSignedIn] = useState(false)
+  const { isSignedIn, isLoading } = useAuth()
 
   useEffect(() => {
-    // Check for auth token
-    const token = localStorage.getItem('pf_token')
-    if (token) {
-      setIsSignedIn(true)
+    // Set username based on auth state
+    if (isSignedIn) {
       setUsername('Player')
     } else {
       setUsername(getGuestUsername())
     }
-  }, [])
+  }, [isSignedIn])
 
   const handleSignOut = () => {
-    localStorage.removeItem('pf_token')
-    localStorage.removeItem('pf_refresh')
-    setIsSignedIn(false)
+    clearAuth()
     setUsername(getGuestUsername())
     window.location.reload()
   }
@@ -51,14 +49,14 @@ export default function Navbar() {
 
           {/* User Section */}
           <div className="hidden md:flex items-center space-x-4">
-            {!isSignedIn ? (
+            {!isLoading && !isSignedIn ? (
               <>
                 <span className="text-sm text-slate-400">{username}</span>
                 <Link href="/auth/signin/">
                   <button className="btn-primary text-sm py-2 px-4">Sign In</button>
                 </Link>
               </>
-            ) : (
+            ) : isSignedIn ? (
               <>
                 <span className="text-sm text-slate-300">{username}</span>
                 <button 
@@ -68,6 +66,9 @@ export default function Navbar() {
                   Sign Out
                 </button>
               </>
+            ) : (
+              // Loading state - show nothing or a spinner
+              <div className="w-20 h-8 bg-white/5 rounded animate-pulse" />
             )}
           </div>
 
@@ -95,21 +96,21 @@ export default function Navbar() {
             <Link href="/profile/" className="block text-slate-300 hover:text-white">Profile</Link>
             
             <div className="pt-4 border-t border-white/10">
-              {!isSignedIn ? (
+              {!isLoading && !isSignedIn ? (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-400">{username}</span>
                   <Link href="/auth/signin/">
                     <button className="btn-primary text-sm py-2 px-4">Sign In</button>
                   </Link>
                 </div>
-              ) : (
+              ) : isSignedIn ? (
                 <button 
                   onClick={handleSignOut}
                   className="text-slate-400 hover:text-white"
                 >
                   Sign Out
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
         )}
