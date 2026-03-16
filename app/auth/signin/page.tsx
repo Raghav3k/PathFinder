@@ -13,7 +13,7 @@ export default function SignInPage() {
   const handleGoogleSignIn = () => {
     setIsLoading(true)
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    const redirectTo = `${origin}/auth/callback/?v=3`
+    const redirectTo = `${origin}/auth/callback/`
     const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
     window.location.href = authUrl
   }
