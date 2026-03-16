@@ -1,5 +1,5 @@
 // Progress tracking for signed-in users
-// VERSION: 2026-03-16-v4
+// VERSION: 2026-03-16-v5 - Updated to use existing schema
 
 import { getAuthToken } from './auth'
 
@@ -23,20 +23,20 @@ interface UserStats {
 
 interface GameRecord {
   id: string
-  game_mode: string
-  level: number
+  mode: string
+  grid_size: number
   score: number
-  completed: boolean
-  played_at: string
+  is_perfect: boolean
+  created_at: string
 }
 
-// Save game result to Supabase
+// Save game result to Supabase (using game_results table)
 export async function saveGameResult(result: GameResult): Promise<boolean> {
   const token = getAuthToken()
   if (!token) return false
 
   try {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/user_scores`, {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/game_results`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -45,13 +45,13 @@ export async function saveGameResult(result: GameResult): Promise<boolean> {
         'Prefer': 'return=minimal'
       },
       body: JSON.stringify({
-        game_mode: result.mode,
-        level: result.level,
+        mode: result.mode,
+        grid_size: result.level,
         score: result.score,
-        stars: result.stars || null,
-        completed: result.completed,
-        attempts: result.attempts,
-        played_at: new Date().toISOString()
+        is_perfect: result.completed && result.attempts === 1,
+        time_seconds: 0, // Not tracked currently
+        path_length: 0, // Not tracked currently
+        created_at: new Date().toISOString()
       })
     })
 
@@ -79,9 +79,15 @@ export async function saveClassicProgress(level: number, stars: number): Promise
       }
     )
 
-    const existing = await checkResponse.json() as Array<{ stars: number }>
+    const existing = await checkResponse.json() as Array<{ stars: number; id: string }>
     const bestStars = existing.length > 0 ? Math.max(existing[0].stars, stars) : stars
+    
+    // If record exists with same or better stars, skip
+    if (existing.length > 0 && existing[0].stars >= stars) {
+      return true
+    }
 
+    // Upsert the progress
     const response = await fetch(`${SUPABASE_URL}/rest/v1/classic_progress`, {
       method: 'POST',
       headers: {
@@ -110,9 +116,9 @@ export async function fetchUserStats(): Promise<UserStats | null> {
   if (!token) return null
 
   try {
-    // Fetch total games played
+    // Fetch total games played from game_results
     const scoresResponse = await fetch(
-      `${SUPABASE_URL}/rest/v1/user_scores?select=*`,
+      `${SUPABASE_URL}/rest/v1/game_results?select=*`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -166,7 +172,7 @@ export async function fetchRecentGames(limit: number = 10): Promise<GameRecord[]
 
   try {
     const response = await fetch(
-      `${SUPABASE_URL}/rest/v1/user_scores?order=played_at.desc&limit=${limit}`,
+      `${SUPABASE_URL}/rest/v1/game_results?order=created_at.desc&limit=${limit}`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,

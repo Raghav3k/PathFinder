@@ -8,11 +8,11 @@ import { fetchUserStats, fetchRecentGames } from '@/lib/progress'
 
 interface GameRecord {
   id: string
-  game_mode: string
-  level: number
+  mode: string
+  grid_size: number
   score: number
-  completed: boolean
-  played_at: string
+  is_perfect: boolean
+  created_at: string
 }
 
 interface UserStats {
@@ -22,7 +22,7 @@ interface UserStats {
   classicProgress: Record<string, number>
 }
 
-// VERSION: 2026-03-16-v4
+// VERSION: 2026-03-16-v5
 export default function ProfilePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -195,15 +195,15 @@ export default function ProfilePage() {
               {recentGames.map((game, index) => (
                 <div key={index} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                   <div>
-                    <p className="text-white capitalize">{game.game_mode} Mode</p>
-                    <p className="text-slate-500 text-sm">Level {game.level} • {new Date(game.played_at).toLocaleDateString()}</p>
+                    <p className="text-white capitalize">{game.mode} Mode</p>
+                    <p className="text-slate-500 text-sm">Level {game.grid_size}×{game.grid_size} • {new Date(game.created_at).toLocaleDateString()}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-yellow-400 font-bold">{game.score.toLocaleString()}</p>
-                    {game.completed ? (
-                      <span className="text-green-400 text-xs">✓ Completed</span>
+                    {game.is_perfect ? (
+                      <span className="text-green-400 text-xs">✓ Perfect</span>
                     ) : (
-                      <span className="text-red-400 text-xs">✗ Failed</span>
+                      <span className="text-slate-500 text-xs">Completed</span>
                     )}
                   </div>
                 </div>
