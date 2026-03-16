@@ -5,11 +5,11 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/ui/Navbar'
 import GameGrid from '@/components/game/GameGrid'
-import { generateGrid, calculatePathSum, validateSolution, Position, GameGrid as GameGridType, getSurvivalTimeLimit, calculateSurvivalScore } from '@/lib/game'
+import { generateGrid, calculatePathSum, validateSolution, Position, GameGrid as GameGridType, calculateSurvivalScore } from '@/lib/game'
 import { incrementGuestLevelsPlayed, shouldShowLoginPrompt, markLoginPromptShown } from '@/lib/guest'
 import { saveGameResult, saveClassicProgress, fetchUserStats } from '@/lib/progress'
 import { isAuthenticated } from '@/lib/auth'
-import { saveGameState, loadGameState, clearGameState, hasSavedGameState } from '@/lib/gameState'
+import { loadGameState, clearGameState, hasSavedGameState } from '@/lib/gameState'
 
 type GameMode = 'classic' | 'survival'
 type GameState = 'menu' | 'classicMenu' | 'survivalMenu' | 'playing' | 'levelComplete' | 'gameOver' | 'loginPrompt'
@@ -24,7 +24,6 @@ function GameContent() {
   // Classic mode state
   const [classicLevel, setClassicLevel] = useState(3)
   const [classicStars, setClassicStars] = useState<Record<number, number>>({})
-  const [classicProgress, setClassicProgress] = useState<Record<string, number>>({})
   const [highestClassicLevel, setHighestClassicLevel] = useState(3)
   
   // Survival mode state
@@ -51,68 +50,9 @@ function GameContent() {
   
   // Check if user is signed in
   const [userSignedIn, setUserSignedIn] = useState(false)
-  const [hasSavedGame, setHasSavedGame] = useState(false)
   
-  // Load saved state and check auth on mount
-  useEffect(() => {
-    const init = async () => {
-      // Check auth status
-      const signedIn = await isAuthenticated()
-      setUserSignedIn(signedIn)
-      
-      // Check for saved game
-      setHasSavedGame(hasSavedGameState())
-      
-      // Load user stats if signed in
-      if (signedIn) {
-        const stats = await fetchUserStats()
-        if (stats) {
-          setClassicProgress(stats.classicProgress)
-          // Find highest completed level
-          const completedLevels = Object.keys(stats.classicProgress).map(Number)
-          if (completedLevels.length > 0) {
-            const maxLevel = Math.max(...completedLevels)
-            setHighestClassicLevel(maxLevel >= 3 ? maxLevel : 3)
-            setHighestSurvivalLevel(stats.levelsCompleted > 0 ? stats.levelsCompleted + 2 : 3)
-          }
-        }
-      }
-      
-      // Handle initial mode from URL
-      if (initialMode) {
-        if (initialMode === 'classic') {
-          startClassicGame(false) // Start fresh, not continue
-        } else {
-          startSurvivalGame()
-        }
-      }
-    }
-    
-    init()
-  }, [initialMode])
-
-  // Timer effect
-  useEffect(() => {
-    if (gameState !== 'playing' || selectedMode !== 'survival') return
-    
-    const timer = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev <= 1) {
-          setGameState('gameOver')
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    
-    return () => clearInterval(timer)
-  }, [gameState, selectedMode])
-
   // Calculate survival time for a level
   const getSurvivalTimeForLevel = (level: number): number => {
-    // Base time: 30 seconds for level 3
-    // For each level above 3, add (level) * 5 seconds
-    // 3x3: 30s, 4x4: +20s = 50s, 5x5: +25s = 75s, etc.
     if (level <= 3) return 30
     let time = 30
     for (let i = 4; i <= level; i++) {
@@ -132,7 +72,6 @@ function GameContent() {
         setClassicStars(saved.classicStars)
       }
     } else if (continueGame && userSignedIn) {
-      // Continue from highest completed level
       const nextLevel = highestClassicLevel + 1
       startLevel = nextLevel > 10 ? 10 : nextLevel
     }
@@ -168,6 +107,53 @@ function GameContent() {
     setTimeRemaining(getSurvivalTimeForLevel(3))
   }, [])
 
+  // Load saved state and check auth on mount
+  useEffect(() => {
+    const init = async () => {
+      const signedIn = await isAuthenticated()
+      setUserSignedIn(signedIn)
+      
+      if (signedIn) {
+        const stats = await fetchUserStats()
+        if (stats) {
+          const completedLevels = Object.keys(stats.classicProgress).map(Number)
+          if (completedLevels.length > 0) {
+            const maxLevel = Math.max(...completedLevels)
+            setHighestClassicLevel(maxLevel >= 3 ? maxLevel : 3)
+            setHighestSurvivalLevel(stats.levelsCompleted > 0 ? stats.levelsCompleted + 2 : 3)
+          }
+        }
+      }
+      
+      if (initialMode) {
+        if (initialMode === 'classic') {
+          startClassicGame(false)
+        } else {
+          startSurvivalGame()
+        }
+      }
+    }
+    
+    init()
+  }, [initialMode, startClassicGame, startSurvivalGame])
+
+  // Timer effect
+  useEffect(() => {
+    if (gameState !== 'playing' || selectedMode !== 'survival') return
+    
+    const timer = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          setGameState('gameOver')
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    
+    return () => clearInterval(timer)
+  }, [gameState, selectedMode])
+
   const handleCheckSolution = useCallback(async (path: Position[] = selectedPath) => {
     if (!grid) return
     
@@ -176,13 +162,10 @@ function GameContent() {
     setAttempts(prev => prev + 1)
     
     if (validation.isOptimal) {
-      // Success!
       if (selectedMode === 'classic') {
-        // Calculate stars
         const stars = attempts === 0 ? 3 : attempts === 1 ? 2 : 1
         setClassicStars(prev => ({ ...prev, [classicLevel]: Math.max(prev[classicLevel] || 0, stars) }))
         
-        // Save progress if signed in
         if (userSignedIn) {
           await saveClassicProgress(classicLevel, stars)
           await saveGameResult({
@@ -197,17 +180,14 @@ function GameContent() {
         
         setGameState('levelComplete')
       } else {
-        // Survival mode
         const score = calculateSurvivalScore(survivalLevel, timeRemaining, true, survivalCombo)
         setSurvivalScore(prev => prev + score)
         setSurvivalCombo(prev => prev + 1)
         
-        // Update highest level
         if (survivalLevel > highestSurvivalLevel) {
           setHighestSurvivalLevel(survivalLevel)
         }
         
-        // Save progress if signed in
         if (userSignedIn) {
           await saveGameResult({
             mode: 'survival',
@@ -221,12 +201,10 @@ function GameContent() {
         setGameState('levelComplete')
       }
     } else {
-      // Not optimal
       if (selectedMode === 'survival') {
         setSurvivalLives(prev => {
           const newLives = prev - 1
           if (newLives <= 0) {
-            // Save final score if signed in
             if (userSignedIn) {
               saveGameResult({
                 mode: 'survival',
@@ -248,7 +226,6 @@ function GameContent() {
   const handlePathChange = useCallback((path: Position[]) => {
     setSelectedPath(path)
     
-    // Auto-check if reached end
     if (grid && path.length > 0) {
       const lastPos = path[path.length - 1]
       if (lastPos.x === grid.endPos.x && lastPos.y === grid.endPos.y) {
@@ -258,11 +235,9 @@ function GameContent() {
   }, [grid, handleCheckSolution])
 
   const handleNextLevel = () => {
-    // Only track guest levels and show login prompt for guests (not signed in users)
     if (!userSignedIn) {
       incrementGuestLevelsPlayed()
       
-      // Check if we should show login prompt (after 5 levels)
       if (shouldShowLoginPrompt()) {
         markLoginPromptShown()
         setGameState('loginPrompt')
@@ -270,11 +245,10 @@ function GameContent() {
       }
     }
     
-    // Reset all game state before starting next level
     setSelectedPath([])
     setAttempts(0)
     setResult(null)
-    setGridKey(prev => prev + 1) // Force grid re-render
+    setGridKey(prev => prev + 1)
     
     if (selectedMode === 'classic') {
       if (classicLevel < 10) {
@@ -284,12 +258,10 @@ function GameContent() {
         setGrid(newGrid)
         setGameState('playing')
       } else {
-        // Max level reached
         clearGameState()
         setGameState('menu')
       }
     } else {
-      // Survival mode - continue to next level
       const nextLevel = survivalLevel + 1
       setSurvivalLevel(nextLevel)
       const newGrid = generateGrid(nextLevel, 'corner')
@@ -303,7 +275,7 @@ function GameContent() {
     setSelectedPath([])
     setAttempts(0)
     setResult(null)
-    setGridKey(prev => prev + 1) // Force grid re-render
+    setGridKey(prev => prev + 1)
     setGameState('playing')
     
     if (selectedMode === 'survival') {
@@ -341,7 +313,6 @@ function GameContent() {
           <h1 className="text-4xl font-bold text-center mb-12 text-gradient">Choose Game Mode</h1>
           
           <div className="grid md:grid-cols-2 gap-8">
-            {/* Classic Mode */}
             <button
               onClick={() => setGameState('classicMenu')}
               className="game-card text-left hover:border-cyan-500/30 transition-all group"
@@ -362,13 +333,9 @@ function GameContent() {
               </p>
               <div className="flex items-center text-cyan-400 group-hover:translate-x-2 transition-transform">
                 <span className="font-semibold">Select →</span>
-                <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
               </div>
             </button>
 
-            {/* Survival Mode */}
             <button
               onClick={() => setGameState('survivalMenu')}
               className="game-card text-left hover:border-purple-500/30 transition-all group"
@@ -389,9 +356,6 @@ function GameContent() {
               </p>
               <div className="flex items-center text-purple-400 group-hover:translate-x-2 transition-transform">
                 <span className="font-semibold">Select →</span>
-                <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
               </div>
             </button>
           </div>
@@ -402,7 +366,7 @@ function GameContent() {
 
   // Classic Mode Menu
   if (gameState === 'classicMenu') {
-    const canContinue = userSignedIn ? highestClassicLevel > 3 : hasSavedGame
+    const canContinue = userSignedIn ? highestClassicLevel > 3 : hasSavedGameState()
     const continueLevel = userSignedIn ? highestClassicLevel + 1 : (loadGameState()?.classicLevel || 3)
     
     return (
@@ -426,7 +390,7 @@ function GameContent() {
               onClick={() => startClassicGame(false)}
               className="w-full game-card text-left hover:border-cyan-500/30 transition-all"
             >
-              <h2 className="text-xl font-bold text-white mb-2">🎮 New Game</h2>
+              <h2 className="text-xl font-bold text-white mb-2">New Game</h2>
               <p className="text-gray-400 text-sm">Start from Level 3×3</p>
             </button>
             
@@ -435,7 +399,7 @@ function GameContent() {
                 onClick={() => startClassicGame(true)}
                 className="w-full game-card text-left hover:border-green-500/30 transition-all border-green-500/20"
               >
-                <h2 className="text-xl font-bold text-white mb-2">▶️ Continue</h2>
+                <h2 className="text-xl font-bold text-white mb-2">Continue</h2>
                 <p className="text-gray-400 text-sm">
                   {userSignedIn 
                     ? `Resume from Level ${continueLevel}×${continueLevel}`
@@ -482,7 +446,7 @@ function GameContent() {
               onClick={startSurvivalGame}
               className="w-full game-card text-left hover:border-purple-500/30 transition-all"
             >
-              <h2 className="text-xl font-bold text-white mb-2">⚡ Play</h2>
+              <h2 className="text-xl font-bold text-white mb-2">Play</h2>
               <p className="text-gray-400 text-sm">Start with 3 lives, survive as long as you can!</p>
             </button>
             
@@ -510,7 +474,6 @@ function GameContent() {
       <Navbar />
       
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Game Header */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
           <div className="flex items-center gap-4">
             <button
@@ -534,7 +497,6 @@ function GameContent() {
             </div>
           </div>
 
-          {/* Stats */}
           <div className="flex items-center gap-4">
             {selectedMode === 'survival' && (
               <>
@@ -566,13 +528,11 @@ function GameContent() {
           </div>
         </div>
 
-        {/* Game Area */}
         <div className="flex flex-col lg:flex-row items-start justify-center gap-8">
-          {/* Grid */}
           <div className="flex-1 flex justify-center">
             {grid && (
               <GameGrid
-                key={`${gridKey}-${classicLevel}-${survivalLevel}`} // Force re-render on level change
+                key={`${gridKey}-${classicLevel}-${survivalLevel}`}
                 grid={grid}
                 selectedPath={selectedPath}
                 onPathChange={handlePathChange}
@@ -581,9 +541,7 @@ function GameContent() {
             )}
           </div>
 
-          {/* Sidebar */}
           <div className="w-full lg:w-64 space-y-4">
-            {/* Current Stats */}
             <div className="game-card p-4">
               <h3 className="text-sm font-semibold text-gray-400 uppercase mb-3">Current Path</h3>
               <div className="space-y-2">
@@ -604,7 +562,6 @@ function GameContent() {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="space-y-2">
               <button
                 onClick={() => { setSelectedPath([]); setGridKey(prev => prev + 1); }}
@@ -626,7 +583,6 @@ function GameContent() {
               )}
             </div>
 
-            {/* Instructions */}
             <div className="game-card p-4 text-sm text-gray-400">
               <p className="mb-2">
                 <span className="text-cyan-400 font-semibold">Goal:</span> Find the path from 
@@ -779,7 +735,7 @@ function GameContent() {
           </div>
         )}
 
-        {/* Login Prompt Modal - Only for guests after 5 levels */}
+        {/* Login Prompt Modal */}
         {gameState === 'loginPrompt' && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="game-card max-w-md w-full text-center border-amber-500/30">
@@ -822,7 +778,6 @@ function GameContent() {
                 </Link>
                 <button
                   onClick={() => {
-                    // Continue as guest - go to next level
                     if (selectedMode === 'classic') {
                       if (classicLevel < 10) {
                         setClassicLevel(prev => prev + 1)
@@ -860,7 +815,7 @@ function GameContent() {
 }
 
 
-// Loading fallback for Suspense
+// Loading fallback
 function GameLoading() {
   return (
     <main className="min-h-screen bg-[#0c0c12]">
@@ -875,7 +830,6 @@ function GameLoading() {
   )
 }
 
-// Main export with Suspense wrapper
 export default function GamePage() {
   return (
     <Suspense fallback={<GameLoading />}>
