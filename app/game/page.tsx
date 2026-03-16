@@ -168,14 +168,16 @@ function GameContent() {
   }, [grid, handleCheckSolution])
 
   const handleNextLevel = () => {
-    // Track levels played as guest
-    incrementGuestLevelsPlayed()
-    
-    // Check if we should show login prompt (after 5 levels)
-    if (shouldShowLoginPrompt()) {
-      markLoginPromptShown()
-      setGameState('loginPrompt')
-      return
+    // Only track guest levels and show login prompt for guests (not signed in users)
+    if (!userSignedIn) {
+      incrementGuestLevelsPlayed()
+      
+      // Check if we should show login prompt (after 5 levels)
+      if (shouldShowLoginPrompt()) {
+        markLoginPromptShown()
+        setGameState('loginPrompt')
+        return
+      }
     }
     
     if (selectedMode === 'classic') {
@@ -568,7 +570,7 @@ function GameContent() {
           </div>
         )}
 
-        {/* Login Prompt Modal - After 5 levels */}
+        {/* Login Prompt Modal - Only for guests after 5 levels */}
         {gameState === 'loginPrompt' && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="game-card max-w-md w-full text-center border-amber-500/30">

@@ -1,5 +1,5 @@
 // Progress tracking for signed-in users
-// VERSION: 2026-03-16-v5 - Updated to use existing schema
+// VERSION: 2026-03-16-v6 - Fixed column names to match schema
 
 import { getAuthToken } from './auth'
 
@@ -46,11 +46,11 @@ export async function saveGameResult(result: GameResult): Promise<boolean> {
       },
       body: JSON.stringify({
         mode: result.mode,
-        grid_size: result.level,
+        grid_size: result.level, // schema uses grid_size
         score: result.score,
         is_perfect: result.completed && result.attempts === 1,
-        time_seconds: 0, // Not tracked currently
-        path_length: 0, // Not tracked currently
+        time_seconds: 0,
+        path_length: 0,
         created_at: new Date().toISOString()
       })
     })
@@ -68,9 +68,9 @@ export async function saveClassicProgress(level: number, stars: number): Promise
   if (!token) return false
 
   try {
-    // First check if there's an existing record
+    // Check if there's an existing record - schema uses grid_size not level
     const checkResponse = await fetch(
-      `${SUPABASE_URL}/rest/v1/classic_progress?level=eq.${level}`,
+      `${SUPABASE_URL}/rest/v1/classic_progress?grid_size=eq.${level}&mode=eq.corner`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -79,15 +79,23 @@ export async function saveClassicProgress(level: number, stars: number): Promise
       }
     )
 
-    const existing = await checkResponse.json() as Array<{ stars: number; id: string }>
+    const existing = await checkResponse.json() as Array<{ stars: number; id: string; attempts: number; perfect_solves: number }>
     const bestStars = existing.length > 0 ? Math.max(existing[0].stars, stars) : stars
+    const isPerfect = stars === 3
     
-    // If record exists with same or better stars, skip
-    if (existing.length > 0 && existing[0].stars >= stars) {
-      return true
+    // Build the upsert data
+    const upsertData = {
+      grid_size: level, // schema uses grid_size
+      mode: 'corner',
+      stars: bestStars,
+      attempts: existing.length > 0 ? existing[0].attempts + 1 : 1,
+      perfect_solves: existing.length > 0 
+        ? existing[0].perfect_solves + (isPerfect ? 1 : 0)
+        : (isPerfect ? 1 : 0),
+      updated_at: new Date().toISOString()
     }
 
-    // Upsert the progress
+    // Use POST with merge-duplicates for upsert
     const response = await fetch(`${SUPABASE_URL}/rest/v1/classic_progress`, {
       method: 'POST',
       headers: {
@@ -96,11 +104,7 @@ export async function saveClassicProgress(level: number, stars: number): Promise
         'Content-Type': 'application/json',
         'Prefer': 'resolution=merge-duplicates'
       },
-      body: JSON.stringify({
-        level: level,
-        stars: bestStars,
-        completed_at: new Date().toISOString()
-      })
+      body: JSON.stringify(upsertData)
     })
 
     return response.ok
@@ -129,9 +133,9 @@ export async function fetchUserStats(): Promise<UserStats | null> {
 
     const scores = await scoresResponse.json() as Array<{ score: number }>
     
-    // Fetch classic progress
+    // Fetch classic progress - schema uses grid_size
     const progressResponse = await fetch(
-      `${SUPABASE_URL}/rest/v1/classic_progress?select=level,stars`,
+      `${SUPABASE_URL}/rest/v1/classic_progress?select=grid_size,stars`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -140,7 +144,7 @@ export async function fetchUserStats(): Promise<UserStats | null> {
       }
     )
 
-    const progress = await progressResponse.json() as Array<{ level: number; stars: number }>
+    const progress = await progressResponse.json() as Array<{ grid_size: number; stars: number }>
 
     const totalGames = scores.length
     const levelsCompleted = progress.length
@@ -150,7 +154,7 @@ export async function fetchUserStats(): Promise<UserStats | null> {
 
     const classicProgress: Record<string, number> = {}
     progress.forEach(p => {
-      classicProgress[p.level] = p.stars
+      classicProgress[p.grid_size] = p.stars
     })
 
     return {
