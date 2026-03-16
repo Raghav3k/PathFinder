@@ -21,6 +21,15 @@ interface UserStats {
   classicProgress: Record<string, number>
 }
 
+interface GameRecord {
+  id: string
+  game_mode: string
+  level: number
+  score: number
+  completed: boolean
+  played_at: string
+}
+
 // Save game result to Supabase
 export async function saveGameResult(result: GameResult): Promise<boolean> {
   const token = getAuthToken()
@@ -70,7 +79,7 @@ export async function saveClassicProgress(level: number, stars: number): Promise
       }
     )
 
-    const existing = await checkResponse.json()
+    const existing = await checkResponse.json() as Array<{ stars: number }>
     const bestStars = existing.length > 0 ? Math.max(existing[0].stars, stars) : stars
 
     const response = await fetch(`${SUPABASE_URL}/rest/v1/classic_progress`, {
@@ -112,7 +121,7 @@ export async function fetchUserStats(): Promise<UserStats | null> {
       }
     )
 
-    const scores = await scoresResponse.json()
+    const scores = await scoresResponse.json() as Array<{ score: number }>
     
     // Fetch classic progress
     const progressResponse = await fetch(
@@ -125,16 +134,16 @@ export async function fetchUserStats(): Promise<UserStats | null> {
       }
     )
 
-    const progress = await progressResponse.json()
+    const progress = await progressResponse.json() as Array<{ level: number; stars: number }>
 
     const totalGames = scores.length
     const levelsCompleted = progress.length
     const bestScore = scores.length > 0 
-      ? Math.max(...scores.map((s: { score: number }) => s.score))
+      ? Math.max(...scores.map(s => s.score))
       : 0
 
     const classicProgress: Record<string, number> = {}
-    progress.forEach((p: { level: number; stars: number }) => {
+    progress.forEach(p => {
       classicProgress[p.level] = p.stars
     })
 
@@ -151,7 +160,7 @@ export async function fetchUserStats(): Promise<UserStats | null> {
 }
 
 // Fetch recent games
-export async function fetchRecentGames(limit: number = 10): Promise<any[]> {
+export async function fetchRecentGames(limit: number = 10): Promise<GameRecord[]> {
   const token = getAuthToken()
   if (!token) return []
 
@@ -166,7 +175,7 @@ export async function fetchRecentGames(limit: number = 10): Promise<any[]> {
       }
     )
 
-    return await response.json()
+    return await response.json() as GameRecord[]
   } catch (err) {
     console.error('Failed to fetch recent games:', err)
     return []

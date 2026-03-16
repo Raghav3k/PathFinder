@@ -6,6 +6,15 @@ import Navbar from '@/components/ui/Navbar'
 import { getAuthToken, clearAuth } from '@/lib/auth'
 import { fetchUserStats, fetchRecentGames } from '@/lib/progress'
 
+interface GameRecord {
+  id: string
+  game_mode: string
+  level: number
+  score: number
+  completed: boolean
+  played_at: string
+}
+
 interface UserStats {
   totalGames: number
   levelsCompleted: number
@@ -18,7 +27,7 @@ export default function ProfilePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState<UserStats | null>(null)
-  const [recentGames, setRecentGames] = useState<any[]>([])
+  const [recentGames, setRecentGames] = useState<GameRecord[]>([])
 
   useEffect(() => {
     // Check auth with retry for OAuth redirect race condition
@@ -38,24 +47,26 @@ export default function ProfilePage() {
     }
 
     // Initial check
-    if (!checkAuth()) {
-      // Retry after short delays (OAuth redirect timing issue)
-      const delays = [200, 500, 1000, 2000]
-      delays.forEach((delay, index) => {
+    checkAuth().then(found => {
+      if (!found) {
+        // Retry after short delays (OAuth redirect timing issue)
+        const delays = [200, 500, 1000, 2000]
+        delays.forEach((delay, index) => {
+          setTimeout(() => {
+            checkAuth().then(retryFound => {
+              if (retryFound && index < delays.length - 1) {
+                // Found it, no need for more checks
+              }
+            })
+          }, delay)
+        })
+        
+        // Final check - if still not authenticated, show sign in
         setTimeout(() => {
-          checkAuth().then(found => {
-            if (found && index < delays.length - 1) {
-              // Found it, no need for more checks
-            }
-          })
-        }, delay)
-      })
-      
-      // Final check - if still not authenticated, show sign in
-      setTimeout(() => {
-        setIsLoading(false)
-      }, 2500)
-    }
+          setIsLoading(false)
+        }, 2500)
+      }
+    })
   }, [])
 
   const handleSignOut = () => {
