@@ -7,32 +7,35 @@ import Navbar from '@/components/ui/Navbar'
 import GameGrid from '@/components/game/GameGrid'
 import { generateGrid, calculatePathSum, validateSolution, Position, GameGrid as GameGridType, getSurvivalTimeLimit, calculateSurvivalScore } from '@/lib/game'
 import { incrementGuestLevelsPlayed, shouldShowLoginPrompt, markLoginPromptShown } from '@/lib/guest'
-import { saveGameResult, saveClassicProgress } from '@/lib/progress'
+import { saveGameResult, saveClassicProgress, fetchUserStats } from '@/lib/progress'
 import { isAuthenticated } from '@/lib/auth'
-import { saveGameState, loadGameState, clearGameState } from '@/lib/gameState'
+import { saveGameState, loadGameState, clearGameState, hasSavedGameState } from '@/lib/gameState'
 
 type GameMode = 'classic' | 'survival'
-type GameState = 'menu' | 'playing' | 'levelComplete' | 'gameOver' | 'loginPrompt'
+type GameState = 'menu' | 'classicMenu' | 'survivalMenu' | 'playing' | 'levelComplete' | 'gameOver' | 'loginPrompt'
 
 function GameContent() {
   const searchParams = useSearchParams()
-  const initialMode = (searchParams.get('mode') as GameMode) || 'classic'
+  const initialMode = (searchParams.get('mode') as GameMode) || null
   
   // Game mode selection
-  const [selectedMode, setSelectedMode] = useState<GameMode>(initialMode)
+  const [selectedMode, setSelectedMode] = useState<GameMode>('classic')
   
   // Classic mode state
   const [classicLevel, setClassicLevel] = useState(3)
   const [classicStars, setClassicStars] = useState<Record<number, number>>({})
+  const [classicProgress, setClassicProgress] = useState<Record<string, number>>({})
+  const [highestClassicLevel, setHighestClassicLevel] = useState(3)
   
   // Survival mode state
   const [survivalLevel, setSurvivalLevel] = useState(3)
   const [survivalLives, setSurvivalLives] = useState(3)
   const [survivalScore, setSurvivalScore] = useState(0)
   const [survivalCombo, setSurvivalCombo] = useState(0)
+  const [highestSurvivalLevel, setHighestSurvivalLevel] = useState(3)
   
   // Current game state
-  const [gameState, setGameState] = useState<GameState>('menu')
+  const [gameState, setGameState] = useState<GameState>(initialMode ? 'playing' : 'menu')
   const [grid, setGrid] = useState<GameGridType | null>(null)
   const [selectedPath, setSelectedPath] = useState<Position[]>([])
   const [timeRemaining, setTimeRemaining] = useState(60)
@@ -48,6 +51,7 @@ function GameContent() {
   
   // Check if user is signed in
   const [userSignedIn, setUserSignedIn] = useState(false)
+  const [hasSavedGame, setHasSavedGame] = useState(false)
   
   // Load saved state and check auth on mount
   useEffect(() => {
@@ -56,51 +60,36 @@ function GameContent() {
       const signedIn = await isAuthenticated()
       setUserSignedIn(signedIn)
       
-      // Load saved game state
-      const savedState = loadGameState()
-      if (savedState && savedState.gameState !== 'menu') {
-        console.log('[DEBUG] Restoring saved game state:', savedState)
-        setSelectedMode(savedState.selectedMode)
-        setClassicLevel(savedState.classicLevel)
-        setClassicStars(savedState.classicStars)
-        setSurvivalLevel(savedState.survivalLevel)
-        setSurvivalLives(savedState.survivalLives)
-        setSurvivalScore(savedState.survivalScore)
-        setSurvivalCombo(savedState.survivalCombo)
-        setGameState(savedState.gameState)
-        setAttempts(savedState.attempts)
-        
-        // Regenerate grid for the current level
-        const level = savedState.selectedMode === 'classic' ? savedState.classicLevel : savedState.survivalLevel
-        const newGrid = generateGrid(level, 'corner')
-        setGrid(newGrid)
-        setGridKey(prev => prev + 1) // Force grid re-render
-        
-        if (savedState.selectedMode === 'survival') {
-          setTimeRemaining(getSurvivalTimeLimit(level))
+      // Check for saved game
+      setHasSavedGame(hasSavedGameState())
+      
+      // Load user stats if signed in
+      if (signedIn) {
+        const stats = await fetchUserStats()
+        if (stats) {
+          setClassicProgress(stats.classicProgress)
+          // Find highest completed level
+          const completedLevels = Object.keys(stats.classicProgress).map(Number)
+          if (completedLevels.length > 0) {
+            const maxLevel = Math.max(...completedLevels)
+            setHighestClassicLevel(maxLevel >= 3 ? maxLevel : 3)
+            setHighestSurvivalLevel(stats.levelsCompleted > 0 ? stats.levelsCompleted + 2 : 3)
+          }
+        }
+      }
+      
+      // Handle initial mode from URL
+      if (initialMode) {
+        if (initialMode === 'classic') {
+          startClassicGame(false) // Start fresh, not continue
+        } else {
+          startSurvivalGame()
         }
       }
     }
     
     init()
-  }, [])
-
-  // Save state whenever it changes (but not for menu)
-  useEffect(() => {
-    if (gameState !== 'menu' && typeof window !== 'undefined') {
-      saveGameState({
-        selectedMode,
-        classicLevel,
-        classicStars,
-        survivalLevel,
-        survivalLives,
-        survivalScore,
-        survivalCombo,
-        gameState,
-        attempts
-      })
-    }
-  }, [selectedMode, classicLevel, classicStars, survivalLevel, survivalLives, survivalScore, survivalCombo, gameState, attempts])
+  }, [initialMode])
 
   // Timer effect
   useEffect(() => {
@@ -119,26 +108,65 @@ function GameContent() {
     return () => clearInterval(timer)
   }, [gameState, selectedMode])
 
-  const startGame = useCallback((mode: GameMode) => {
-    // Clear any saved state when starting fresh
+  // Calculate survival time for a level
+  const getSurvivalTimeForLevel = (level: number): number => {
+    // Base time: 30 seconds for level 3
+    // For each level above 3, add (level) * 5 seconds
+    // 3x3: 30s, 4x4: +20s = 50s, 5x5: +25s = 75s, etc.
+    if (level <= 3) return 30
+    let time = 30
+    for (let i = 4; i <= level; i++) {
+      time += i * 5
+    }
+    return time
+  }
+
+  const startClassicGame = useCallback((continueGame: boolean) => {
     clearGameState()
     
-    setSelectedMode(mode)
+    let startLevel = 3
+    if (continueGame && hasSavedGameState()) {
+      const saved = loadGameState()
+      if (saved && saved.selectedMode === 'classic') {
+        startLevel = saved.classicLevel
+        setClassicStars(saved.classicStars)
+      }
+    } else if (continueGame && userSignedIn) {
+      // Continue from highest completed level
+      const nextLevel = highestClassicLevel + 1
+      startLevel = nextLevel > 10 ? 10 : nextLevel
+    }
+    
+    setSelectedMode('classic')
+    setClassicLevel(startLevel)
     setGameState('playing')
     setSelectedPath([])
     setAttempts(0)
     setResult(null)
-    setGridKey(prev => prev + 1) // Force grid re-render
+    setGridKey(prev => prev + 1)
     
-    if (mode === 'classic') {
-      const newGrid = generateGrid(classicLevel, 'corner')
-      setGrid(newGrid)
-    } else {
-      const newGrid = generateGrid(survivalLevel, 'corner')
-      setGrid(newGrid)
-      setTimeRemaining(getSurvivalTimeLimit(survivalLevel))
-    }
-  }, [classicLevel, survivalLevel])
+    const newGrid = generateGrid(startLevel, 'corner')
+    setGrid(newGrid)
+  }, [highestClassicLevel, userSignedIn])
+
+  const startSurvivalGame = useCallback(() => {
+    clearGameState()
+    
+    setSelectedMode('survival')
+    setGameState('playing')
+    setSurvivalLevel(3)
+    setSurvivalLives(3)
+    setSurvivalScore(0)
+    setSurvivalCombo(0)
+    setSelectedPath([])
+    setAttempts(0)
+    setResult(null)
+    setGridKey(prev => prev + 1)
+    
+    const newGrid = generateGrid(3, 'corner')
+    setGrid(newGrid)
+    setTimeRemaining(getSurvivalTimeForLevel(3))
+  }, [])
 
   const handleCheckSolution = useCallback(async (path: Position[] = selectedPath) => {
     if (!grid) return
@@ -173,6 +201,11 @@ function GameContent() {
         const score = calculateSurvivalScore(survivalLevel, timeRemaining, true, survivalCombo)
         setSurvivalScore(prev => prev + score)
         setSurvivalCombo(prev => prev + 1)
+        
+        // Update highest level
+        if (survivalLevel > highestSurvivalLevel) {
+          setHighestSurvivalLevel(survivalLevel)
+        }
         
         // Save progress if signed in
         if (userSignedIn) {
@@ -210,7 +243,7 @@ function GameContent() {
         setSurvivalCombo(0)
       }
     }
-  }, [grid, selectedPath, selectedMode, attempts, classicLevel, survivalLevel, timeRemaining, survivalCombo, survivalScore, userSignedIn])
+  }, [grid, selectedPath, selectedMode, attempts, classicLevel, survivalLevel, timeRemaining, survivalCombo, survivalScore, userSignedIn, highestSurvivalLevel])
 
   const handlePathChange = useCallback((path: Position[]) => {
     setSelectedPath(path)
@@ -261,7 +294,7 @@ function GameContent() {
       setSurvivalLevel(nextLevel)
       const newGrid = generateGrid(nextLevel, 'corner')
       setGrid(newGrid)
-      setTimeRemaining(getSurvivalTimeLimit(nextLevel))
+      setTimeRemaining(getSurvivalTimeForLevel(nextLevel))
       setGameState('playing')
     }
   }
@@ -274,7 +307,7 @@ function GameContent() {
     setGameState('playing')
     
     if (selectedMode === 'survival') {
-      setTimeRemaining(getSurvivalTimeLimit(survivalLevel))
+      setTimeRemaining(getSurvivalTimeForLevel(survivalLevel))
     }
   }
 
@@ -283,7 +316,7 @@ function GameContent() {
     setGameState('menu')
     setSelectedPath([])
     setResult(null)
-    setGridKey(prev => prev + 1) // Force grid re-render
+    setGridKey(prev => prev + 1)
     
     if (selectedMode === 'survival') {
       setSurvivalLevel(3)
@@ -299,7 +332,7 @@ function GameContent() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Menu Screen
+  // Main Menu Screen
   if (gameState === 'menu') {
     return (
       <main className="min-h-screen bg-[#0a0a0f]">
@@ -310,7 +343,7 @@ function GameContent() {
           <div className="grid md:grid-cols-2 gap-8">
             {/* Classic Mode */}
             <button
-              onClick={() => startGame('classic')}
+              onClick={() => setGameState('classicMenu')}
               className="game-card text-left hover:border-cyan-500/30 transition-all group"
             >
               <div className="flex items-center mb-4">
@@ -328,7 +361,7 @@ function GameContent() {
                 Start at 3×3 grids and work your way up to 10×10. Earn stars based on your efficiency.
               </p>
               <div className="flex items-center text-cyan-400 group-hover:translate-x-2 transition-transform">
-                <span className="font-semibold">Play Now</span>
+                <span className="font-semibold">Select →</span>
                 <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
@@ -337,7 +370,7 @@ function GameContent() {
 
             {/* Survival Mode */}
             <button
-              onClick={() => startGame('survival')}
+              onClick={() => setGameState('survivalMenu')}
               className="game-card text-left hover:border-purple-500/30 transition-all group"
             >
               <div className="flex items-center mb-4">
@@ -352,15 +385,119 @@ function GameContent() {
                 </div>
               </div>
               <p className="text-gray-400 mb-4">
-                Start at 3×3 with 3 lives. Advance through infinite levels with decreasing time limits.
+                Start at 3×3 with 3 lives. Advance through infinite levels with increasing time.
               </p>
               <div className="flex items-center text-purple-400 group-hover:translate-x-2 transition-transform">
-                <span className="font-semibold">Play Now</span>
+                <span className="font-semibold">Select →</span>
                 <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </div>
             </button>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  // Classic Mode Menu
+  if (gameState === 'classicMenu') {
+    const canContinue = userSignedIn ? highestClassicLevel > 3 : hasSavedGame
+    const continueLevel = userSignedIn ? highestClassicLevel + 1 : (loadGameState()?.classicLevel || 3)
+    
+    return (
+      <main className="min-h-screen bg-[#0a0a0f]">
+        <Navbar />
+        <div className="max-w-md mx-auto px-4 py-16">
+          <button
+            onClick={() => setGameState('menu')}
+            className="mb-6 flex items-center text-slate-400 hover:text-white transition-colors"
+          >
+            <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+          
+          <h1 className="text-3xl font-bold text-center mb-8 text-gradient">Classic Mode</h1>
+          
+          <div className="space-y-4">
+            <button
+              onClick={() => startClassicGame(false)}
+              className="w-full game-card text-left hover:border-cyan-500/30 transition-all"
+            >
+              <h2 className="text-xl font-bold text-white mb-2">🎮 New Game</h2>
+              <p className="text-gray-400 text-sm">Start from Level 3×3</p>
+            </button>
+            
+            {canContinue && (
+              <button
+                onClick={() => startClassicGame(true)}
+                className="w-full game-card text-left hover:border-green-500/30 transition-all border-green-500/20"
+              >
+                <h2 className="text-xl font-bold text-white mb-2">▶️ Continue</h2>
+                <p className="text-gray-400 text-sm">
+                  {userSignedIn 
+                    ? `Resume from Level ${continueLevel}×${continueLevel}`
+                    : `Resume from saved game`
+                  }
+                </p>
+              </button>
+            )}
+            
+            {userSignedIn && highestClassicLevel > 3 && (
+              <div className="mt-6 p-4 bg-white/5 rounded-lg">
+                <p className="text-sm text-slate-400 mb-2">Your Progress</p>
+                <p className="text-2xl font-bold text-cyan-400">
+                  Level {highestClassicLevel}×{highestClassicLevel} <span className="text-sm text-slate-500">reached</span>
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  // Survival Mode Menu
+  if (gameState === 'survivalMenu') {
+    return (
+      <main className="min-h-screen bg-[#0a0a0f]">
+        <Navbar />
+        <div className="max-w-md mx-auto px-4 py-16">
+          <button
+            onClick={() => setGameState('menu')}
+            className="mb-6 flex items-center text-slate-400 hover:text-white transition-colors"
+          >
+            <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+          
+          <h1 className="text-3xl font-bold text-center mb-8 text-gradient">Survival Mode</h1>
+          
+          <div className="space-y-4">
+            <button
+              onClick={startSurvivalGame}
+              className="w-full game-card text-left hover:border-purple-500/30 transition-all"
+            >
+              <h2 className="text-xl font-bold text-white mb-2">⚡ Play</h2>
+              <p className="text-gray-400 text-sm">Start with 3 lives, survive as long as you can!</p>
+            </button>
+            
+            {userSignedIn && (
+              <div className="mt-6 p-4 bg-white/5 rounded-lg">
+                <p className="text-sm text-slate-400 mb-2">Your Best</p>
+                <p className="text-2xl font-bold text-purple-400">
+                  Level {highestSurvivalLevel}×{highestSurvivalLevel}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Time increases with each level:
+                  <br />3×3: 30s | 4×4: 50s | 5×5: 75s | 6×6: 105s...
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </main>
@@ -435,7 +572,7 @@ function GameContent() {
           <div className="flex-1 flex justify-center">
             {grid && (
               <GameGrid
-                key={gridKey} // Force re-render on level change
+                key={`${gridKey}-${classicLevel}-${survivalLevel}`} // Force re-render on level change
                 grid={grid}
                 selectedPath={selectedPath}
                 onPathChange={handlePathChange}
@@ -470,7 +607,7 @@ function GameContent() {
             {/* Actions */}
             <div className="space-y-2">
               <button
-                onClick={() => setSelectedPath([])}
+                onClick={() => { setSelectedPath([]); setGridKey(prev => prev + 1); }}
                 className="w-full py-3 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -609,6 +746,13 @@ function GameContent() {
                 <div className="text-4xl font-bold text-yellow-400 mb-1">{survivalScore.toLocaleString()}</div>
                 <div className="text-sm text-gray-500 uppercase">Final Score</div>
               </div>
+              
+              <div className="mb-4">
+                <p className="text-lg text-white">You reached Level {survivalLevel}×{survivalLevel}</p>
+                {survivalLevel > highestSurvivalLevel && (
+                  <p className="text-green-400 text-sm">New best!</p>
+                )}
+              </div>
 
               <div className="space-y-2">
                 <button
@@ -618,7 +762,7 @@ function GameContent() {
                     setSurvivalLives(3)
                     setSurvivalScore(0)
                     setSurvivalCombo(0)
-                    startGame('survival')
+                    startSurvivalGame()
                   }}
                   className="btn-primary w-full"
                 >
@@ -698,7 +842,7 @@ function GameContent() {
                       setSelectedPath([])
                       setAttempts(0)
                       setResult(null)
-                      setTimeRemaining(getSurvivalTimeLimit(survivalLevel + 1))
+                      setTimeRemaining(getSurvivalTimeForLevel(survivalLevel + 1))
                       setGameState('playing')
                     }
                   }}

@@ -3,28 +3,39 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { getGuestUsername } from '@/lib/guest'
-import { useAuth } from '@/hooks/useAuth'
-import { clearAuth } from '@/lib/auth'
+import { isAuthenticated, clearAuth, onAuthChange } from '@/lib/auth'
 
-// VERSION: 2026-03-16-v9 - Fixed sign out
+// VERSION: 2026-03-16-v10 - Fixed auth state sync
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [username, setUsername] = useState('Guest')
-  const { isSignedIn, isLoading } = useAuth()
+  const [isSignedIn, setIsSignedIn] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Set username based on auth state
-    if (isSignedIn) {
-      setUsername('Player')
-    } else {
-      setUsername(getGuestUsername())
+    // Check auth on mount
+    const checkAuth = async () => {
+      const signedIn = await isAuthenticated()
+      setIsSignedIn(signedIn)
+      setUsername(signedIn ? 'Player' : getGuestUsername())
+      setIsLoading(false)
     }
-  }, [isSignedIn])
+    
+    checkAuth()
+
+    // Subscribe to auth changes
+    const unsubscribe = onAuthChange((signedIn) => {
+      setIsSignedIn(signedIn)
+      setUsername(signedIn ? 'Player' : getGuestUsername())
+    })
+
+    return () => unsubscribe()
+  }, [])
 
   const handleSignOut = async () => {
     await clearAuth()
-    // Force page reload to clear all state and redirect to home
-    window.location.href = '/'
+    // Force reload to clear all React state
+    window.location.reload()
   }
 
   return (
@@ -67,7 +78,7 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
-              // Loading state - show nothing or a spinner
+              // Loading state
               <div className="w-20 h-8 bg-white/5 rounded animate-pulse" />
             )}
           </div>
