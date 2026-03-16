@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import Navbar from '@/components/ui/Navbar'
 
-// VERSION: 2026-03-16-v2 - Simplified Auth
+// Build: 2026-03-16-v3-FINAL
 const SUPABASE_URL = 'https://kcbvupdqgbevatxctlbb.supabase.co'
 
 export default function SignInPage() {
@@ -12,15 +12,9 @@ export default function SignInPage() {
 
   const handleGoogleSignIn = () => {
     setIsLoading(true)
-    
-    // Get current origin for redirect
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    const redirectTo = `${origin}/auth/callback/`
-    
-    // Direct Supabase OAuth URL
+    const redirectTo = `${origin}/auth/callback/?v=3`
     const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
-    
-    // Redirect to Google OAuth
     window.location.href = authUrl
   }
 
@@ -32,6 +26,7 @@ export default function SignInPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Welcome Back!</h1>
           <p className="text-slate-400">Sign in to save your progress</p>
+          <p className="text-xs text-slate-600 mt-2">v3</p>
         </div>
 
         <div className="game-card space-y-4">
@@ -51,7 +46,7 @@ export default function SignInPage() {
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
               </svg>
             )}
-            Continue with Google
+            Sign in with Google
           </button>
 
           {/* Divider */}
@@ -64,15 +59,15 @@ export default function SignInPage() {
             </div>
           </div>
 
-          {/* Continue as Guest */}
+          {/* Guest */}
           <Link href="/game/">
             <button className="w-full py-3 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 font-medium transition-colors">
-              Continue as Guest
+              Play as Guest
             </button>
           </Link>
         </div>
 
-        {/* Back to game */}
+        {/* Back */}
         <div className="mt-8 text-center">
           <Link href="/game/" className="text-slate-400 hover:text-white text-sm transition-colors">
             ← Back to game
