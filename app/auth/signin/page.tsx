@@ -1,93 +1,27 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import Navbar from '@/components/ui/Navbar'
 
-// Simple direct Supabase client for this page only
+// VERSION: 2026-03-16-v2 - Simplified Auth
 const SUPABASE_URL = 'https://kcbvupdqgbevatxctlbb.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtjYnZ1cGRxZ2JldmF0eGN0bGJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NDM0MDUsImV4cCI6MjA4OTExOTQwNX0.gRFM_nFYe9URrzfJjUDGNDz0b8pybCePe6uLxcx9rFQ'
 
 export default function SignInPage() {
-  const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
-  const [message, setMessage] = useState('')
-  const [email, setEmail] = useState('')
 
-  // Check if already signed in on mount
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`
-          }
-        })
-        if (response.ok) {
-          router.push('/profile/')
-        }
-      } catch {
-        // Not signed in, that's fine
-      }
-    }
-    checkSession()
-  }, [router])
-
-  // Google Sign In
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = () => {
     setIsLoading(true)
-    setMessage('')
     
-    try {
-      // Get current URL for redirect
-      const redirectTo = `${window.location.origin}/auth/callback/`
-      
-      // Construct Google OAuth URL
-      const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
-      
-      // Redirect to Google OAuth
-      window.location.href = authUrl
-    } catch (err) {
-      console.error('Sign in error:', err)
-      setMessage('Failed to sign in. Please try again.')
-      setIsLoading(false)
-    }
-  }
-
-  // Email Magic Link Sign In
-  const handleEmailSignIn = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!email) return
+    // Get current origin for redirect
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const redirectTo = `${origin}/auth/callback/`
     
-    setIsLoading(true)
-    setMessage('')
+    // Direct Supabase OAuth URL
+    const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
     
-    try {
-      const response = await fetch(`${SUPABASE_URL}/auth/v1/otp`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email,
-          create_user: true,
-          gotrue_meta_security: {}
-        })
-      })
-      
-      if (response.ok) {
-        setMessage(`Magic link sent to ${email}! Check your inbox.`)
-      } else {
-        setMessage('Failed to send magic link. Please try again.')
-      }
-    } catch {
-      setMessage('Failed to send magic link. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
+    // Redirect to Google OAuth
+    window.location.href = authUrl
   }
 
   return (
@@ -97,18 +31,8 @@ export default function SignInPage() {
       <div className="max-w-md mx-auto px-4 py-16">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Welcome Back!</h1>
-          <p className="text-slate-400">Sign in to save your progress and compete on leaderboards</p>
+          <p className="text-slate-400">Sign in to save your progress</p>
         </div>
-
-        {message && (
-          <div className={`mb-4 p-4 rounded-lg text-center ${
-            message.includes('sent') 
-              ? 'bg-green-500/10 border border-green-500/30 text-green-400'
-              : 'bg-red-500/10 border border-red-500/30 text-red-400'
-          }`}>
-            {message}
-          </div>
-        )}
 
         <div className="game-card space-y-4">
           {/* Google Sign In */}
@@ -140,66 +64,12 @@ export default function SignInPage() {
             </div>
           </div>
 
-          {/* Email Magic Link */}
-          <form onSubmit={handleEmailSignIn} className="space-y-3">
-            <input
-              type="email"
-              placeholder="Enter your email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-colors"
-              required
-            />
-            <button 
-              type="submit"
-              className="w-full py-3 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-colors border border-white/10 disabled:opacity-50"
-              disabled={isLoading || !email}
-            >
-              {isLoading ? 'Sending...' : 'Send Magic Link'}
-            </button>
-          </form>
-
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-[#1c1c26] text-slate-500">or</span>
-            </div>
-          </div>
-
           {/* Continue as Guest */}
           <Link href="/game/">
             <button className="w-full py-3 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 font-medium transition-colors">
               Continue as Guest
             </button>
           </Link>
-        </div>
-
-        {/* Benefits */}
-        <div className="mt-8 space-y-3">
-          <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider text-center mb-4">
-            Why sign in?
-          </h3>
-          <div className="flex items-center gap-3 text-sm text-slate-300">
-            <svg className="w-5 h-5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Save progress across all your devices
-          </div>
-          <div className="flex items-center gap-3 text-sm text-slate-300">
-            <svg className="w-5 h-5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Compete on global leaderboards
-          </div>
-          <div className="flex items-center gap-3 text-sm text-slate-300">
-            <svg className="w-5 h-5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Track your stats over time
-          </div>
         </div>
 
         {/* Back to game */}
