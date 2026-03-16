@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Position, GameGrid as GameGridType } from '@/lib/game'
 
 interface GameGridProps {
@@ -11,6 +11,7 @@ interface GameGridProps {
   showOptimal?: boolean
 }
 
+// VERSION: 2026-03-16-v11 - Fixed event handling and state reset
 export default function GameGrid({
   grid,
   selectedPath,
@@ -20,6 +21,13 @@ export default function GameGrid({
 }: GameGridProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [, setHoveredCell] = useState<Position | null>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+
+  // Reset dragging state when grid changes or completes
+  useEffect(() => {
+    setIsDragging(false)
+    setHoveredCell(null)
+  }, [grid, isComplete])
 
   const getCellClassName = (x: number, y: number): string => {
     const isStart = x === grid.startPos.x && y === grid.startPos.y
@@ -50,13 +58,13 @@ export default function GameGrid({
     return className
   }
 
-  const isAdjacentToLast = (pos: Position): boolean => {
+  const isAdjacentToLast = useCallback((pos: Position): boolean => {
     if (selectedPath.length === 0) return false
     const last = selectedPath[selectedPath.length - 1]
     const dx = Math.abs(pos.x - last.x)
     const dy = Math.abs(pos.y - last.y)
     return dx + dy === 1
-  }
+  }, [selectedPath])
 
   const handleCellInteraction = useCallback((x: number, y: number) => {
     if (isComplete) return
@@ -85,15 +93,16 @@ export default function GameGrid({
 
     // Add to path
     onPathChange([...selectedPath, pos])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPath, onPathChange, grid.startPos, isComplete, grid])
+  }, [selectedPath, onPathChange, grid.startPos, isComplete, isAdjacentToLast])
 
   const handleMouseDown = (x: number, y: number) => {
+    if (isComplete) return
     setIsDragging(true)
     handleCellInteraction(x, y)
   }
 
   const handleMouseEnter = (x: number, y: number) => {
+    if (isComplete) return
     setHoveredCell({ x, y })
     if (isDragging) {
       handleCellInteraction(x, y)
@@ -105,14 +114,19 @@ export default function GameGrid({
   }
 
   const handleTouchStart = (x: number, y: number) => {
+    if (isComplete) return
     handleCellInteraction(x, y)
   }
 
-  // Global mouse up handler
+  // Global mouse up handler - clean up on unmount
   useEffect(() => {
     const handleGlobalMouseUp = () => setIsDragging(false)
     window.addEventListener('mouseup', handleGlobalMouseUp)
-    return () => window.removeEventListener('mouseup', handleGlobalMouseUp)
+    window.addEventListener('touchend', handleGlobalMouseUp)
+    return () => {
+      window.removeEventListener('mouseup', handleGlobalMouseUp)
+      window.removeEventListener('touchend', handleGlobalMouseUp)
+    }
   }, [])
 
   // Calculate cell size based on grid size
@@ -125,8 +139,13 @@ export default function GameGrid({
 
   return (
     <div 
-      className="inline-block p-4 rounded-2xl bg-[#12121a] border border-white/10"
-      onMouseLeave={() => setHoveredCell(null)}
+      ref={gridRef}
+      className="inline-block p-4 rounded-2xl bg-[#12121a] border border-white/10 select-none"
+      onMouseLeave={() => {
+        setHoveredCell(null)
+        setIsDragging(false)
+      }}
+      onTouchEnd={() => setIsDragging(false)}
     >
       <div 
         className="grid gap-2"
@@ -137,17 +156,32 @@ export default function GameGrid({
         {grid.cells.map((row, y) =>
           row.map((value, x) => {
             const isStart = x === grid.startPos.x && y === grid.startPos.y
-            // const isEnd = x === grid.endPos.x && y === grid.endPos.y
             
             return (
               <button
-                key={`${x}-${y}`}
+                key={`${grid.size}-${x}-${y}`}
                 className={`${getCellClassName(x, y)} ${getCellSize()}`}
                 onMouseDown={() => handleMouseDown(x, y)}
                 onMouseEnter={() => handleMouseEnter(x, y)}
                 onMouseUp={handleMouseUp}
-                onTouchStart={() => handleTouchStart(x, y)}
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  handleTouchStart(x, y)
+                }}
+                onTouchMove={(e) => {
+                  // Handle touch drag
+                  if (!isDragging) return
+                  const touch = e.touches[0]
+                  const element = document.elementFromPoint(touch.clientX, touch.clientY)
+                  if (element && element.hasAttribute('data-x') && element.hasAttribute('data-y')) {
+                    const touchX = parseInt(element.getAttribute('data-x') || '0')
+                    const touchY = parseInt(element.getAttribute('data-y') || '0')
+                    handleCellInteraction(touchX, touchY)
+                  }
+                }}
                 disabled={isComplete}
+                data-x={x}
+                data-y={y}
               >
                 {isStart ? (
                   <span className="text-xs sm:text-sm font-bold">START</span>
