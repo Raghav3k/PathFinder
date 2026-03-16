@@ -45,7 +45,6 @@ function GameContent() {
   
   // Check if user is signed in
   const [userSignedIn, setUserSignedIn] = useState(false)
-  const [authChecked, setAuthChecked] = useState(false)
   
   // Load saved state and check auth on mount
   useEffect(() => {
@@ -53,7 +52,6 @@ function GameContent() {
       // Check auth status
       const signedIn = await isAuthenticated()
       setUserSignedIn(signedIn)
-      setAuthChecked(true)
       
       // Load saved game state
       const savedState = loadGameState()
