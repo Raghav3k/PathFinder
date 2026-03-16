@@ -7,17 +7,21 @@ import { isAuthenticated } from '@/lib/auth'
 
 const SUPABASE_URL = 'https://kcbvupdqgbevatxctlbb.supabase.co'
 
-// VERSION: 2026-03-16-v3
+// VERSION: 2026-03-16-v8
 export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isAlreadySignedIn, setIsAlreadySignedIn] = useState(false)
 
   useEffect(() => {
     // If already signed in, redirect to profile
-    if (isAuthenticated()) {
-      setIsAlreadySignedIn(true)
-      window.location.href = '/profile/'
+    const checkAuth = async () => {
+      const signedIn = await isAuthenticated()
+      if (signedIn) {
+        setIsAlreadySignedIn(true)
+        window.location.href = '/profile/'
+      }
     }
+    checkAuth()
   }, [])
 
   const handleGoogleSignIn = () => {
@@ -51,7 +55,7 @@ export default function SignInPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Welcome Back!</h1>
           <p className="text-slate-400">Sign in to save your progress</p>
-          <p className="text-xs text-slate-600 mt-2">v3-fixed-auth</p>
+          <p className="text-xs text-slate-600 mt-2">v8-fixed</p>
         </div>
 
         <div className="game-card space-y-4">
