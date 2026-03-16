@@ -7,6 +7,8 @@ import Navbar from '@/components/ui/Navbar'
 import GameGrid from '@/components/game/GameGrid'
 import { generateGrid, calculatePathSum, validateSolution, Position, GameGrid as GameGridType, getSurvivalTimeLimit, calculateSurvivalScore } from '@/lib/game'
 import { incrementGuestLevelsPlayed, shouldShowLoginPrompt, markLoginPromptShown } from '@/lib/guest'
+import { saveGameResult, saveClassicProgress } from '@/lib/progress'
+import { isAuthenticated } from '@/lib/auth'
 
 type GameMode = 'classic' | 'survival'
 type GameState = 'menu' | 'playing' | 'levelComplete' | 'gameOver' | 'loginPrompt'
@@ -39,6 +41,13 @@ function GameContent() {
     userSum: number
     optimalSum: number
   } | null>(null)
+  
+  // Check if user is signed in
+  const [userSignedIn, setUserSignedIn] = useState(false)
+  
+  useEffect(() => {
+    setUserSignedIn(isAuthenticated())
+  }, [])
 
   // Timer effect
   useEffect(() => {
@@ -74,7 +83,7 @@ function GameContent() {
     }
   }, [classicLevel, survivalLevel])
 
-  const handleCheckSolution = useCallback((path: Position[] = selectedPath) => {
+  const handleCheckSolution = useCallback(async (path: Position[] = selectedPath) => {
     if (!grid) return
     
     const validation = validateSolution(grid, path)
@@ -87,12 +96,38 @@ function GameContent() {
         // Calculate stars
         const stars = attempts === 0 ? 3 : attempts === 1 ? 2 : 1
         setClassicStars(prev => ({ ...prev, [classicLevel]: Math.max(prev[classicLevel] || 0, stars) }))
+        
+        // Save progress if signed in
+        if (userSignedIn) {
+          await saveClassicProgress(classicLevel, stars)
+          await saveGameResult({
+            mode: 'classic',
+            level: classicLevel,
+            score: validation.userSum,
+            stars: stars,
+            completed: true,
+            attempts: attempts + 1
+          })
+        }
+        
         setGameState('levelComplete')
       } else {
         // Survival mode
         const score = calculateSurvivalScore(survivalLevel, timeRemaining, true, survivalCombo)
         setSurvivalScore(prev => prev + score)
         setSurvivalCombo(prev => prev + 1)
+        
+        // Save progress if signed in
+        if (userSignedIn) {
+          await saveGameResult({
+            mode: 'survival',
+            level: survivalLevel,
+            score: score,
+            completed: true,
+            attempts: attempts + 1
+          })
+        }
+        
         setGameState('levelComplete')
       }
     } else {
@@ -101,6 +136,16 @@ function GameContent() {
         setSurvivalLives(prev => {
           const newLives = prev - 1
           if (newLives <= 0) {
+            // Save final score if signed in
+            if (userSignedIn) {
+              saveGameResult({
+                mode: 'survival',
+                level: survivalLevel,
+                score: survivalScore,
+                completed: false,
+                attempts: attempts + 1
+              })
+            }
             setGameState('gameOver')
           }
           return newLives
@@ -108,7 +153,7 @@ function GameContent() {
         setSurvivalCombo(0)
       }
     }
-  }, [grid, selectedPath, selectedMode, attempts, classicLevel, survivalLevel, timeRemaining, survivalCombo])
+  }, [grid, selectedPath, selectedMode, attempts, classicLevel, survivalLevel, timeRemaining, survivalCombo, survivalScore, userSignedIn])
 
   const handlePathChange = useCallback((path: Position[]) => {
     setSelectedPath(path)
