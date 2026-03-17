@@ -9,6 +9,7 @@ interface GameGridProps {
   onPathChange: (path: Position[]) => void
   isComplete?: boolean
   showOptimal?: boolean
+  showStartEndLabels?: boolean
 }
 
 // VERSION: 2026-03-16-v11 - Fixed event handling and state reset
@@ -18,6 +19,7 @@ export default function GameGrid({
   onPathChange,
   isComplete = false,
   showOptimal = false,
+  showStartEndLabels = false,
 }: GameGridProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [, setHoveredCell] = useState<Position | null>(null)
@@ -156,6 +158,7 @@ export default function GameGrid({
         {grid.cells.map((row, y) =>
           row.map((value, x) => {
             const isStart = x === grid.startPos.x && y === grid.startPos.y
+            const isEnd = x === grid.endPos.x && y === grid.endPos.y
             
             return (
               <button
@@ -183,8 +186,10 @@ export default function GameGrid({
                 data-x={x}
                 data-y={y}
               >
-                {isStart ? (
-                  <span className="text-xs sm:text-sm font-bold">START</span>
+                {showStartEndLabels && isStart ? (
+                  <span className="text-[10px] sm:text-xs font-bold">START</span>
+                ) : showStartEndLabels && isEnd ? (
+                  <span className="text-[10px] sm:text-xs font-bold">END</span>
                 ) : (
                   <span>{value}</span>
                 )}
