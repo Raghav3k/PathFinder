@@ -33,6 +33,10 @@ When something important happens, add it here:
 ### Recent Decisions Log (Add new entries at top)
 | Date | Decision | Why | Impact |
 |------|----------|-----|--------|
+| 2026-03-18 | 1 Min Mode instant transitions | Speed/flow state - no delays | OneMinMode.tsx |
+| 2026-03-18 | Grid text pop effect | Visual feedback vs tick mark | OneMinMode level indicator |
+| 2026-03-18 | Not optimal msg under grid | Clear feedback without popup | OneMinMode, SurvivalMode |
+| 2026-03-18 | Auto-reset & key reset settings | User control over reset behavior | OneMinMode, SurvivalMode, ClassicMode |
 | 2026-03-18 | Add difficulty modes | Maze complexity Easy→Expert | game.ts, ClassicMode |
 | 2026-03-18 | Add 1 Minute mode | Flow state speed challenge | OneMinMode.tsx, game page |
 | 2026-03-18 | Cross-device sync enabled | Users can switch devices mid-game | progress.ts, ClassicMode, SurvivalMode |
@@ -69,20 +73,21 @@ If the user asks about something not in this file:
 ## 📍 Current Status (Last Updated: 2026-03-18)
 
 ### What's Been Done
-1. **Classic Mode Rebuilt** - Fixed grid freeze bug by isolating component, timer pauses on not-optimal, stops on optimal
-2. **Continue Feature** - Auto-saves game state to localStorage, can resume same puzzle
-3. **Survival Mode Update** - Same UI as Classic, countdown timer, lives system, score removed
-4. **Sum Calculation Fix** - Excludes START/END cells from "Your" sum and optimal sum
-5. **UI Redesign Complete** - Warm Paper Theme with Fraunces/DM Sans typography, OKLCH colors
+1. **1 Minute Mode** - Speed mode with instant level transitions, no tick marks, pop effect on grid size
+2. **Reset Key & Auto-Reset** - Press 'R' (configurable) to reset path anytime; auto-reset option in 1 Min & Survival
+3. **Not Optimal Feedback** - Shows message under grid instead of modal popup
+4. **Difficulty Modes** - Easy/Medium/Hard/Expert with maze trap branches
+5. **Cross-Device Sync** - Signed-in users can resume games on any device
+6. **Classic Mode Rebuilt** - Fixed grid freeze bug, timer pauses on not-optimal
+7. **UI Redesign Complete** - Warm Paper Theme with Fraunces/DM Sans typography, OKLCH colors
 
 ### Live Deployment
 - **URL:** https://pathfinder-dvg.pages.dev
-- **Last Deployment:** March 18, 2026 (UI redesign)
+- **Last Deployment:** March 18, 2026 (1 Min Mode, difficulty levels, reset features)
 
 ### Git State
-- **Latest Commit:** `6f5acf6` - SNAPSHOT: Before UI redesign
-- **Tag:** `v1.0-working` - Working version before redesign
-- **Uncommitted Changes:** UI redesign files (globals.css, layout.tsx, GameGrid, ClassicMode, SurvivalMode)
+- **Latest Commit:** `db41795` - 1 Min Mode, difficulty levels, reset features
+- **Previous Tag:** `v1.0-working` - Working version before redesign
 
 ---
 
@@ -211,6 +216,18 @@ pathfinder-web/
 - **Guests:** localStorage only (`gameState.ts`)
 - **Signed-in:** Supabase `current_runs` table (if migration run)
 - **Continue Feature:** Restores exact same puzzle (grid + path)
+
+### 1 Minute Mode Behavior (Speed Mode)
+- **Instant Transitions:** No delay between levels (unlike Classic/Survival)
+- **Visual Feedback:** Grid size text pops with scale animation instead of tick mark
+- **Not Optimal:** Shows message under grid, auto-resets if setting enabled
+- **Reset Key:** Press 'R' (configurable) anytime to reset current path
+
+### Reset Key & Auto-Reset Settings
+- **Classic Mode:** Reset key only (no auto-reset, preserves deliberate gameplay)
+- **Survival Mode:** Both reset key and auto-reset option
+- **1 Min Mode:** Both reset key and auto-reset option (speed focused)
+- **Key Listener:** Global keyboard listener in useEffect, checks `e.key.toLowerCase()`
 
 ---
 
