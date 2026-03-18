@@ -1,4 +1,5 @@
 // PathFinder Game Logic
+// VERSION: 2026-03-18-v2 - Added difficulty modes and path patterns
 
 export interface Position {
   x: number
@@ -19,10 +20,15 @@ export interface GameGrid {
   optimalSum?: number
 }
 
+export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert'
+export type PathPattern = 'straight' | 'simple_zigzag' | 'complex_zigzag' | 'snake' | 'random'
+
 // Generate a random grid with meaningful values
-export function generateGrid(size: number, mode: 'corner' | 'center' = 'corner'): GameGrid {
-  const cells: number[][] = []
-  
+export function generateGrid(
+  size: number, 
+  mode: 'corner' | 'center' = 'corner',
+  difficulty: Difficulty = 'medium'
+): GameGrid {
   // Start and end positions
   const startPos: Position = mode === 'corner' 
     ? { x: 0, y: 0 }
@@ -30,22 +36,192 @@ export function generateGrid(size: number, mode: 'corner' | 'center' = 'corner')
   
   const endPos: Position = { x: size - 1, y: size - 1 }
   
-  // Generate random values (1-9, with lower values near start/end for better paths)
+  // Generate based on difficulty
+  const grid = generateMazeGrid(size, startPos, endPos, difficulty)
+  
+  // Calculate optimal path immediately
+  const optimal = findOptimalPath(grid)
+  grid.optimalPath = optimal.path
+  grid.optimalSum = optimal.sum
+  
+  return grid
+}
+
+// Generate grid with maze-like structure (branches/traps)
+function generateMazeGrid(
+  size: number,
+  startPos: Position,
+  endPos: Position,
+  difficulty: Difficulty
+): GameGrid {
+  const cells: number[][] = Array(size).fill(null).map(() => Array(size).fill(0))
+  
+  // Determine number of trap branches based on difficulty
+  const trapCount = {
+    'easy': 0,
+    'medium': 1,
+    'hard': 2,
+    'expert': 3
+  }[difficulty]
+  
+  // First, create the optimal path
+  const optimalPath = generateComplexZigzagPath(size, startPos, endPos)
+  
+  // Place values on optimal path (medium values - 3-5)
+  for (const pos of optimalPath) {
+    cells[pos.y][pos.x] = Math.floor(Math.random() * 3) + 3 // 3-5
+  }
+  
+  // Create trap branches
+  for (let i = 0; i < trapCount; i++) {
+    createTrapBranch(cells, size, startPos, endPos, optimalPath)
+  }
+  
+  // Fill remaining cells with higher values (6-9) to discourage wandering
   for (let y = 0; y < size; y++) {
-    cells[y] = []
     for (let x = 0; x < size; x++) {
-      // Start and end cells get lower values
-      if ((x === startPos.x && y === startPos.y) || (x === endPos.x && y === endPos.y)) {
-        cells[y][x] = Math.floor(Math.random() * 3) + 1
-      } else {
-        cells[y][x] = Math.floor(Math.random() * 9) + 1
+      if (cells[y][x] === 0) {
+        cells[y][x] = Math.floor(Math.random() * 4) + 6 // 6-9
+      }
+    }
+  }
+  
+  return { size, cells, startPos, endPos }
+}
+
+// Generate complex zigzag path (for 1 Min Mode and as base for maze)
+function generateComplexZigzagPath(
+  size: number,
+  startPos: Position,
+  endPos: Position
+): Position[] {
+  const path: Position[] = [{ ...startPos }]
+  let current = { ...startPos }
+  
+  // Use a biased random walk that tends toward end but zigzags
+  while (current.x !== endPos.x || current.y !== endPos.y) {
+    const possible: Position[] = []
+    
+    // Can we move right?
+    if (current.x < endPos.x) {
+      possible.push({ x: current.x + 1, y: current.y })
+    }
+    // Can we move down?
+    if (current.y < endPos.y) {
+      possible.push({ x: current.x, y: current.y + 1 })
+    }
+    // Can we move left? (for zigzag)
+    if (current.x > 0 && Math.random() < 0.3) {
+      possible.push({ x: current.x - 1, y: current.y })
+    }
+    // Can we move up? (for zigzag)
+    if (current.y > 0 && Math.random() < 0.3) {
+      possible.push({ x: current.x, y: current.y - 1 })
+    }
+    
+    // Filter out visited positions
+    const unvisited = possible.filter(p => 
+      !path.some(visited => visited.x === p.x && visited.y === p.y)
+    )
+    
+    if (unvisited.length === 0) {
+      // Dead end - backtrack (shouldn't happen often with this logic)
+      break
+    }
+    
+    // Prefer moves toward end, but allow zigzag
+    const next = unvisited[Math.floor(Math.random() * unvisited.length)]
+    path.push(next)
+    current = next
+  }
+  
+  return path
+}
+
+// Create a trap branch (path that looks good but leads to high numbers)
+function createTrapBranch(
+  cells: number[][],
+  size: number,
+  startPos: Position,
+  endPos: Position,
+  optimalPath: Position[]
+): void {
+  // Find a point on optimal path to branch from (not start or end)
+  const branchIndex = Math.floor(Math.random() * (optimalPath.length - 2)) + 1
+  const branchPoint = optimalPath[branchIndex]
+  
+  // Create a short tempting path with low values
+  const trapLength = Math.floor(Math.random() * 2) + 2 // 2-3 cells
+  let current = { ...branchPoint }
+  
+  for (let i = 0; i < trapLength; i++) {
+    // Find adjacent unvisited cell
+    const adjacent: Position[] = [
+      { x: current.x + 1, y: current.y },
+      { x: current.x - 1, y: current.y },
+      { x: current.x, y: current.y + 1 },
+      { x: current.x, y: current.y - 1 }
+    ].filter(p => 
+      p.x >= 0 && p.x < size && 
+      p.y >= 0 && p.y < size &&
+      cells[p.y][p.x] === 0 &&
+      !optimalPath.some(op => op.x === p.x && op.y === p.y)
+    )
+    
+    if (adjacent.length === 0) break
+    
+    const next = adjacent[Math.floor(Math.random() * adjacent.length)]
+    
+    // Place tempting low value (1-2)
+    cells[next.y][next.x] = Math.floor(Math.random() * 2) + 1
+    
+    current = next
+  }
+  
+  // End with a high value to make it a trap
+  if (current.x !== branchPoint.x || current.y !== branchPoint.y) {
+    const endAdjacent: Position[] = [
+      { x: current.x + 1, y: current.y },
+      { x: current.x - 1, y: current.y },
+      { x: current.x, y: current.y + 1 },
+      { x: current.x, y: current.y - 1 }
+    ].filter(p => 
+      p.x >= 0 && p.x < size && 
+      p.y >= 0 && p.y < size &&
+      cells[p.y][p.x] === 0
+    )
+    
+    if (endAdjacent.length > 0) {
+      const trapEnd = endAdjacent[Math.floor(Math.random() * endAdjacent.length)]
+      cells[trapEnd.y][trapEnd.x] = 9 // Dead end with high value
+    }
+  }
+}
+
+// Generate grid for 1 Min Mode (complex zigzag, no dead ends)
+export function generateOneMinGrid(size: number): GameGrid {
+  const startPos: Position = { x: 0, y: 0 }
+  const endPos: Position = { x: size - 1, y: size - 1 }
+  const cells: number[][] = Array(size).fill(null).map(() => Array(size).fill(0))
+  
+  // Generate complex zigzag path
+  const path = generateComplexZigzagPath(size, startPos, endPos)
+  
+  // Place medium values on path (3-5)
+  for (const pos of path) {
+    cells[pos.y][pos.x] = Math.floor(Math.random() * 3) + 3
+  }
+  
+  // Fill rest with higher values (6-9)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (cells[y][x] === 0) {
+        cells[y][x] = Math.floor(Math.random() * 4) + 6
       }
     }
   }
   
   const grid: GameGrid = { size, cells, startPos, endPos }
-  
-  // Calculate optimal path immediately
   const optimal = findOptimalPath(grid)
   grid.optimalPath = optimal.path
   grid.optimalSum = optimal.sum
@@ -151,4 +327,15 @@ export function calculateSurvivalScore(
 export function getSurvivalTimeLimit(level: number): number {
   // Level 3: 60s, Level 4: 55s, Level 5: 50s... minimum 20s
   return Math.max(20, 75 - (level * 5))
+}
+
+// Get difficulty display name
+export function getDifficultyName(difficulty: Difficulty): string {
+  const names: Record<Difficulty, string> = {
+    'easy': 'Easy',
+    'medium': 'Medium',
+    'hard': 'Hard',
+    'expert': 'Expert'
+  }
+  return names[difficulty]
 }

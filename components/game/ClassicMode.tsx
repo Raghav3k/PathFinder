@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import GameGrid from './GameGrid'
-import { generateGrid, validateSolution, findOptimalPath, Position, GameGrid as GameGridType } from '@/lib/game'
+import { generateGrid, validateSolution, findOptimalPath, Position, GameGrid as GameGridType, Difficulty, getDifficultyName } from '@/lib/game'
 import { saveGameResult, saveClassicProgress, saveCurrentRun, loadCurrentRun, deleteCurrentRun } from '@/lib/progress'
 import { incrementGuestLevelsPlayed, shouldShowLoginPrompt, markLoginPromptShown } from '@/lib/guest'
 
@@ -12,7 +12,7 @@ interface ClassicModeProps {
   onBack: () => void
 }
 
-type ViewState = 'menu' | 'playing' | 'notOptimal' | 'loginPrompt'
+type ViewState = 'menu' | 'difficulty' | 'playing' | 'notOptimal' | 'loginPrompt'
 
 interface SavedProgress {
   level: number
@@ -93,6 +93,7 @@ function clearGameState() {
 
 export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) {
   const [viewState, setViewState] = useState<ViewState>('menu')
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium')
   const [level, setLevel] = useState(3)
   const [grid, setGrid] = useState<GameGridType | null>(null)
   const [selectedPath, setSelectedPath] = useState<Position[]>([])
@@ -179,7 +180,7 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
     setShowTick(false)
     setGridKey(prev => prev + 1)
     
-    const newGrid = generateGrid(3, 'corner')
+    const newGrid = generateGrid(3, 'corner', difficulty)
     setGrid(newGrid)
     setViewState('playing')
     
@@ -190,7 +191,7 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
       selectedPath: [],
       attempts: 0
     }, userSignedIn)
-  }, [])
+  }, [userSignedIn, difficulty])
   
   // Continue/resume game
   const continueGame = useCallback(async () => {
@@ -241,7 +242,7 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
       setShowTick(false)
       setGridKey(prev => prev + 1)
       
-      const newGrid = generateGrid(startLevel, 'corner')
+      const newGrid = generateGrid(startLevel, 'corner', difficulty)
       setGrid(newGrid)
       setViewState('playing')
       
@@ -252,7 +253,7 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
         attempts: 0
       }, userSignedIn)
     }
-  }, [userSignedIn, timer])
+  }, [userSignedIn, difficulty])
   
   // Go to next level
   const goToNextLevel = useCallback(async () => {
@@ -279,7 +280,7 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
       setShowTick(false)
       setGridKey(prev => prev + 1)
       
-      const newGrid = generateGrid(nextLevel, 'corner')
+      const newGrid = generateGrid(nextLevel, 'corner', difficulty)
       setGrid(newGrid)
       setViewState('playing')
       
@@ -295,7 +296,7 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
       clearGameState()
       onBack()
     }
-  }, [level, userSignedIn, onBack])
+  }, [level, userSignedIn, onBack, difficulty])
   
   // Handle path change
   const handlePathChange = useCallback((path: Position[]) => {
@@ -355,7 +356,7 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
         attempts
       }, userSignedIn, timer)
     }
-  }, [grid, level, attempts])
+  }, [grid, level, attempts, timer, userSignedIn])
   
   // Try again
   const handleTryAgain = useCallback(() => {
@@ -401,13 +402,13 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
           
           <div className="w-full max-w-sm space-y-4">
             <button
-              onClick={startNewGame}
+              onClick={() => setViewState('difficulty')}
               className="w-full game-card text-left group"
             >
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-display text-text-primary mb-1">New Game</h2>
-                  <p className="text-text-muted text-sm">Start fresh from 3×3</p>
+                  <p className="text-text-muted text-sm">Choose difficulty and start fresh</p>
                 </div>
                 <svg className="w-5 h-5 text-accent opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -438,6 +439,64 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
                 </div>
               </button>
             )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+  
+  // Difficulty selector view
+  if (viewState === 'difficulty') {
+    return (
+      <div className="min-h-screen flex flex-col">
+        {/* Header */}
+        <div className="w-full max-w-4xl mx-auto px-6 pt-8 pb-6">
+          <button
+            onClick={() => setViewState('menu')}
+            className="inline-flex items-center text-text-secondary hover:text-text-primary transition-colors text-sm"
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+        </div>
+        
+        {/* Content */}
+        <div className="flex-1 flex flex-col items-center justify-center px-6 pb-20">
+          <div className="text-center mb-12">
+            <h1 className="font-display text-4xl sm:text-5xl mb-4 text-gradient">Select Difficulty</h1>
+            <p className="text-text-secondary text-lg">Choose your challenge level</p>
+          </div>
+          
+          <div className="w-full max-w-sm space-y-3">
+            {(['easy', 'medium', 'hard', 'expert'] as Difficulty[]).map((diff) => (
+              <button
+                key={diff}
+                onClick={() => {
+                  setDifficulty(diff)
+                  startNewGame()
+                }}
+                className={`w-full game-card text-left group transition-all ${
+                  difficulty === diff ? 'border-accent/50' : ''
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-display text-text-primary mb-1 capitalize">{getDifficultyName(diff)}</h2>
+                    <p className="text-text-muted text-sm">
+                      {diff === 'easy' && 'Straight path, no traps'}
+                      {diff === 'medium' && 'Occasional branches'}
+                      {diff === 'hard' && 'Multiple trap paths'}
+                      {diff === 'expert' && 'Complex maze navigation'}
+                    </p>
+                  </div>
+                  <svg className="w-5 h-5 text-accent opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+            ))}
           </div>
         </div>
       </div>
