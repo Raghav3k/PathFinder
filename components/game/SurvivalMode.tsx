@@ -10,7 +10,8 @@ interface SurvivalModeProps {
   onBack: () => void
 }
 
-type ViewState = 'menu' | 'playing' | 'notOptimal' | 'gameOver'
+type ViewState = 'menu' | 'settings' | 'playing' | 'notOptimal' | 'gameOver'
+type ResetMode = 'manual' | 'auto'
 
 const SURVIVAL_RUN_KEY = 'pf_survival_run'
 
@@ -55,6 +56,8 @@ function getSurvivalTime(level: number): number {
 
 export default function SurvivalMode({ userSignedIn, onBack }: SurvivalModeProps) {
   const [viewState, setViewState] = useState<ViewState>('menu')
+  const [resetMode, setResetMode] = useState<ResetMode>('manual')
+  const [resetKey, setResetKey] = useState<string>('r')
   const [level, setLevel] = useState(3)
   const [lives, setLives] = useState(3)
   const [grid, setGrid] = useState<GameGridType | null>(null)
@@ -65,8 +68,27 @@ export default function SurvivalMode({ userSignedIn, onBack }: SurvivalModeProps
   const [timeRemaining, setTimeRemaining] = useState(30)
   const [showTick, setShowTick] = useState(false)
   const [gridKey, setGridKey] = useState(0)
+  const [notOptimalMsg, setNotOptimalMsg] = useState('')
   
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Keyboard listener for reset key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((viewState === 'playing' || viewState === 'notOptimal') && e.key.toLowerCase() === resetKey.toLowerCase()) {
+        e.preventDefault()
+        setSelectedPath([])
+        setGridKey(prev => prev + 1)
+        setNotOptimalMsg('')
+        if (viewState === 'notOptimal') {
+          setViewState('playing')
+        }
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [viewState, resetKey])
   
   // Calculate optimal sum (excluding start/end)
   useEffect(() => {
@@ -278,6 +300,9 @@ export default function SurvivalMode({ userSignedIn, onBack }: SurvivalModeProps
           setLives(newLives)
           setAttempts(prev => prev + 1)
           
+          // Set not optimal message
+          setNotOptimalMsg(`Not optimal path (${validation.userSum} vs best ${validation.optimalSum})`)
+          
           if (newLives <= 0) {
             if (userSignedIn) {
               saveGameResult({
@@ -290,17 +315,32 @@ export default function SurvivalMode({ userSignedIn, onBack }: SurvivalModeProps
             }
             setViewState('gameOver')
           } else {
-            setViewState('notOptimal')
+            // Auto reset if enabled, otherwise show notOptimal screen
+            if (resetMode === 'auto') {
+              setTimeout(() => {
+                setSelectedPath([])
+                setGridKey(prev => prev + 1)
+                setNotOptimalMsg('')
+              }, 600)
+            } else {
+              setViewState('notOptimal')
+            }
           }
         }
       }
     }
-  }, [grid, level, lives, attempts, timeRemaining, userSignedIn, goToNextLevel])
+  }, [grid, level, lives, attempts, timeRemaining, userSignedIn, goToNextLevel, resetMode])
   
   // Reset path
   const handleReset = useCallback(async () => {
     setSelectedPath([])
     setGridKey(prev => prev + 1)
+    setNotOptimalMsg('')
+    
+    // If in notOptimal state, go back to playing
+    if (viewState === 'notOptimal') {
+      setViewState('playing')
+    }
     
     // Sync reset to Supabase
     if (userSignedIn && grid) {
@@ -314,7 +354,7 @@ export default function SurvivalMode({ userSignedIn, onBack }: SurvivalModeProps
         timerSeconds: timeRemaining
       })
     }
-  }, [userSignedIn, grid, level, lives, attempts, timeRemaining])
+  }, [userSignedIn, grid, level, lives, attempts, timeRemaining, viewState])
   
   // Try again
   const handleTryAgain = useCallback(() => {
@@ -331,6 +371,90 @@ export default function SurvivalMode({ userSignedIn, onBack }: SurvivalModeProps
   // Check saved run
   const savedRun = getSurvivalRun()
   const hasSavedRun = savedRun !== null
+  
+  // Settings view
+  if (viewState === 'settings') {
+    return (
+      <div className="min-h-screen flex flex-col">
+        {/* Header */}
+        <div className="w-full max-w-4xl mx-auto px-6 pt-8 pb-6">
+          <button
+            onClick={() => setViewState('menu')}
+            className="inline-flex items-center text-text-secondary hover:text-text-primary transition-colors text-sm"
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+        </div>
+        
+        {/* Content */}
+        <div className="flex-1 flex flex-col items-center justify-center px-6 pb-20">
+          <div className="text-center mb-12">
+            <h1 className="font-display text-4xl sm:text-5xl mb-4 text-gradient">Settings</h1>
+            <p className="text-text-secondary text-lg">Configure your game</p>
+          </div>
+          
+          <div className="w-full max-w-sm space-y-4">
+            {/* Settings Card */}
+            <div className="game-card">
+              <h3 className="text-text-primary font-medium mb-4">Game Options</h3>
+              
+              {/* Reset Mode */}
+              <div className="mb-4">
+                <p className="text-text-muted text-sm mb-2">On wrong path:</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setResetMode('manual')}
+                    className={`flex-1 py-2 px-3 rounded text-sm transition-colors ${
+                      resetMode === 'manual' 
+                        ? 'bg-accent text-bg-primary' 
+                        : 'bg-bg-elevated text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    Manual Reset
+                  </button>
+                  <button
+                    onClick={() => setResetMode('auto')}
+                    className={`flex-1 py-2 px-3 rounded text-sm transition-colors ${
+                      resetMode === 'auto' 
+                        ? 'bg-accent text-bg-primary' 
+                        : 'bg-bg-elevated text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    Auto Reset
+                  </button>
+                </div>
+              </div>
+              
+              {/* Reset Key */}
+              <div className="mb-6">
+                <p className="text-text-muted text-sm mb-2">Reset key:</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={resetKey}
+                    onChange={(e) => setResetKey(e.target.value.slice(0, 1))}
+                    className="w-12 h-10 bg-bg-elevated border border-white/10 rounded text-center text-text-primary font-mono uppercase"
+                    maxLength={1}
+                  />
+                  <span className="text-text-muted text-sm">Press to reset path anytime</span>
+                </div>
+              </div>
+            </div>
+            
+            <button
+              onClick={startNewRun}
+              className="w-full btn-primary text-lg py-4"
+            >
+              Start Game
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   
   // Menu view
   if (viewState === 'menu') {
@@ -358,7 +482,7 @@ export default function SurvivalMode({ userSignedIn, onBack }: SurvivalModeProps
           
           <div className="w-full max-w-sm space-y-4">
             <button
-              onClick={startNewRun}
+              onClick={() => setViewState('settings')}
               className="w-full game-card text-left group"
             >
               <div className="flex items-center justify-between">
@@ -487,9 +611,14 @@ export default function SurvivalMode({ userSignedIn, onBack }: SurvivalModeProps
             )}
           </div>
           
-          {/* Attempts */}
-          <div className="mt-6 text-text-muted text-sm">
-            Attempt {attempts + 1}
+          {/* Attempts and reset hint */}
+          <div className="mt-6 text-center">
+            {notOptimalMsg ? (
+              <p className="text-[oklch(55%_0.12_25)] font-medium animate-pulse mb-1">{notOptimalMsg}</p>
+            ) : null}
+            <p className="text-text-muted text-sm">
+              Attempt {attempts + 1} • Press <kbd className="px-2 py-1 bg-bg-elevated rounded text-text-primary font-mono">{resetKey}</kbd> to reset
+            </p>
           </div>
         </div>
       </div>
@@ -555,7 +684,13 @@ export default function SurvivalMode({ userSignedIn, onBack }: SurvivalModeProps
           
           {/* Message and actions */}
           <div className="text-center">
-            <p className="text-text-secondary mb-6">Not the optimal path. Try a different route?</p>
+            {notOptimalMsg && (
+              <p className="text-[oklch(55%_0.12_25)] font-medium mb-2 animate-pulse">{notOptimalMsg}</p>
+            )}
+            <p className="text-text-secondary mb-2">Lost a life! Try a different route?</p>
+            <p className="text-text-muted text-sm mb-4">
+              Press <kbd className="px-2 py-1 bg-bg-elevated rounded text-text-primary font-mono">{resetKey}</kbd> to reset
+            </p>
             <div className="flex gap-3 justify-center">
               <button
                 onClick={handleTryAgain}

@@ -12,7 +12,7 @@ interface ClassicModeProps {
   onBack: () => void
 }
 
-type ViewState = 'menu' | 'difficulty' | 'playing' | 'notOptimal' | 'loginPrompt'
+type ViewState = 'menu' | 'difficulty' | 'settings' | 'playing' | 'notOptimal' | 'loginPrompt'
 
 interface SavedProgress {
   level: number
@@ -103,8 +103,34 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
   const [timer, setTimer] = useState(0)
   const [showTick, setShowTick] = useState(false)
   const [gridKey, setGridKey] = useState(0)
+  const [resetKey, setResetKey] = useState<string>('r')
   
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Keyboard listener for reset key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((viewState === 'playing' || viewState === 'notOptimal') && e.key.toLowerCase() === resetKey.toLowerCase()) {
+        e.preventDefault()
+        setSelectedPath([])
+        setGridKey(prev => prev + 1)
+        if (viewState === 'notOptimal') {
+          setViewState('playing')
+        }
+        if (grid) {
+          saveGameState({
+            level,
+            grid,
+            selectedPath: [],
+            attempts
+          }, userSignedIn, timer)
+        }
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [viewState, resetKey, level, grid, attempts, userSignedIn, timer])
   
   // Load saved progress on mount
   useEffect(() => {
@@ -348,6 +374,12 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
   const handleReset = useCallback(() => {
     setSelectedPath([])
     setGridKey(prev => prev + 1)
+    
+    // If in notOptimal state, go back to playing
+    if (viewState === 'notOptimal') {
+      setViewState('playing')
+    }
+    
     if (grid) {
       saveGameState({
         level,
@@ -356,7 +388,7 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
         attempts
       }, userSignedIn, timer)
     }
-  }, [grid, level, attempts, timer, userSignedIn])
+  }, [grid, level, attempts, timer, userSignedIn, viewState])
   
   // Try again
   const handleTryAgain = useCallback(() => {
@@ -469,7 +501,7 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
             <p className="text-text-secondary text-lg">Choose your challenge level</p>
           </div>
           
-          <div className="w-full max-w-sm space-y-3">
+          <div className="w-full max-w-sm space-y-4">
             {(['easy', 'medium', 'hard', 'expert'] as Difficulty[]).map((diff) => (
               <button
                 key={diff}
@@ -497,6 +529,21 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
                 </div>
               </button>
             ))}
+            
+            {/* Reset Key Setting */}
+            <div className="game-card mt-6">
+              <p className="text-text-muted text-sm mb-2">Reset key:</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={resetKey}
+                  onChange={(e) => setResetKey(e.target.value.slice(0, 1))}
+                  className="w-12 h-10 bg-bg-elevated border border-white/10 rounded text-center text-text-primary font-mono uppercase"
+                  maxLength={1}
+                />
+                <span className="text-text-muted text-sm">Press to reset path anytime</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -583,9 +630,11 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
             )}
           </div>
           
-          {/* Attempts */}
-          <div className="mt-6 text-text-muted text-sm">
-            Attempt {attempts + 1}
+          {/* Attempts and reset hint */}
+          <div className="mt-6 text-center">
+            <p className="text-text-muted text-sm">
+              Attempt {attempts + 1} • Press <kbd className="px-2 py-1 bg-bg-elevated rounded text-text-primary font-mono">{resetKey}</kbd> to reset
+            </p>
           </div>
         </div>
       </div>
@@ -644,7 +693,10 @@ export default function ClassicMode({ userSignedIn, onBack }: ClassicModeProps) 
           
           {/* Message and actions */}
           <div className="text-center">
-            <p className="text-text-secondary mb-6">Not the optimal path. Try a different route?</p>
+            <p className="text-text-secondary mb-2">Not the optimal path. Try a different route?</p>
+            <p className="text-text-muted text-sm mb-4">
+              Press <kbd className="px-2 py-1 bg-bg-elevated rounded text-text-primary font-mono">{resetKey}</kbd> to reset
+            </p>
             <div className="flex gap-3 justify-center">
               <button
                 onClick={handleTryAgain}
