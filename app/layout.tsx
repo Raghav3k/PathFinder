@@ -1,16 +1,17 @@
 import type { Metadata } from 'next'
-import { Outfit, JetBrains_Mono } from 'next/font/google'
+import { Fraunces, DM_Sans } from 'next/font/google'
 import './globals.css'
 
-const outfit = Outfit({
+const fraunces = Fraunces({
   subsets: ['latin'],
   variable: '--font-display',
   display: 'swap',
+  axes: ['SOFT', 'WONK'], // For playful personality
 })
 
-const jetbrainsMono = JetBrains_Mono({
+const dmSans = DM_Sans({
   subsets: ['latin'],
-  variable: '--font-mono',
+  variable: '--font-body',
   display: 'swap',
 })
 
@@ -25,8 +26,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${outfit.variable} ${jetbrainsMono.variable}`}>
-      <body className="bg-[#0c0c12] text-slate-100 font-sans min-h-screen antialiased">
+    <html lang="en" className={`${fraunces.variable} ${dmSans.variable}`}>
+      <body className="font-body min-h-screen antialiased">
         {children}
       </body>
     </html>

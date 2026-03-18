@@ -1,7 +1,8 @@
 // Progress tracking for signed-in users
-// VERSION: 2026-03-16-v9 - Include user_id in inserts
+// VERSION: 2026-03-18-v1 - Added current_runs for cross-device sync
 
 import { supabase } from './supabase'
+import { GameGrid, Position } from './game'
 
 interface GameResult {
   mode: 'classic' | 'survival'
@@ -207,4 +208,147 @@ export async function fetchRecentGames(limit: number = 10): Promise<GameRecord[]
     console.error('[DEBUG] Failed to fetch recent games:', err)
     return []
   }
+}
+
+// ============================================
+// CURRENT RUNS - Cross-device sync
+// ============================================
+
+export interface CurrentRun {
+  mode: 'classic' | 'survival'
+  classicLevel?: number
+  classicStars?: Record<number, number>
+  survivalLevel?: number
+  survivalLives?: number
+  survivalScore?: number
+  gridState?: GameGrid
+  selectedPath?: Position[]
+  attempts?: number
+  timerSeconds?: number
+  updatedAt?: string
+}
+
+// Save current run to Supabase (for cross-device sync)
+export async function saveCurrentRun(run: CurrentRun): Promise<boolean> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      // Not signed in - don't save to Supabase
+      return false
+    }
+
+    const { error } = await supabase
+      .from('current_runs')
+      .upsert({
+        user_id: user.id,
+        mode: run.mode,
+        classic_level: run.classicLevel,
+        classic_stars: run.classicStars,
+        survival_level: run.survivalLevel,
+        survival_lives: run.survivalLives,
+        survival_score: run.survivalScore,
+        grid_state: run.gridState,
+        selected_path: run.selectedPath,
+        attempts: run.attempts,
+        timer_seconds: run.timerSeconds || 0,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,mode'
+      })
+
+    if (error) {
+      console.error('[DEBUG] saveCurrentRun error:', error)
+      return false
+    }
+
+    return true
+  } catch (err) {
+    console.error('[DEBUG] Failed to save current run:', err)
+    return false
+  }
+}
+
+// Load current run from Supabase
+export async function loadCurrentRun(mode: 'classic' | 'survival'): Promise<CurrentRun | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      // Not signed in - no Supabase data
+      return null
+    }
+
+    const { data, error } = await supabase
+      .from('current_runs')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('mode', mode)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows found - normal for new users
+        return null
+      }
+      console.error('[DEBUG] loadCurrentRun error:', error)
+      return null
+    }
+
+    if (!data) return null
+
+    // Check if run is stale (older than 24 hours)
+    const updatedAt = new Date(data.updated_at).getTime()
+    const oneDay = 24 * 60 * 60 * 1000
+    if (Date.now() - updatedAt > oneDay) {
+      // Delete stale run
+      await deleteCurrentRun(mode)
+      return null
+    }
+
+    return {
+      mode: data.mode,
+      classicLevel: data.classic_level,
+      classicStars: data.classic_stars,
+      survivalLevel: data.survival_level,
+      survivalLives: data.survival_lives,
+      survivalScore: data.survival_score,
+      gridState: data.grid_state,
+      selectedPath: data.selected_path,
+      attempts: data.attempts,
+      timerSeconds: data.timer_seconds,
+      updatedAt: data.updated_at
+    }
+  } catch (err) {
+    console.error('[DEBUG] Failed to load current run:', err)
+    return null
+  }
+}
+
+// Delete current run (e.g., when completing a level)
+export async function deleteCurrentRun(mode: 'classic' | 'survival'): Promise<boolean> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return false
+
+    const { error } = await supabase
+      .from('current_runs')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('mode', mode)
+
+    if (error) {
+      console.error('[DEBUG] deleteCurrentRun error:', error)
+      return false
+    }
+
+    return true
+  } catch (err) {
+    console.error('[DEBUG] Failed to delete current run:', err)
+    return false
+  }
+}
+
+// Check if user has a current run in Supabase
+export async function hasCurrentRun(mode: 'classic' | 'survival'): Promise<boolean> {
+  const run = await loadCurrentRun(mode)
+  return run !== null
 }

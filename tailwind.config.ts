@@ -8,9 +8,17 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        display: ['var(--font-display)', 'Georgia', 'serif'],
+        body: ['var(--font-body)', 'system-ui', 'sans-serif'],
+      },
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        'bg-primary': 'var(--bg-primary)',
+        'bg-paper': 'var(--bg-paper)',
+        'bg-elevated': 'var(--bg-elevated)',
+        'accent': 'var(--accent)',
+        'accent-light': 'var(--accent-light)',
+        'accent-dark': 'var(--accent-dark)',
       },
     },
   },
